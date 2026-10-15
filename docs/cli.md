@@ -1,9 +1,9 @@
 # BADR CLI contract, version 1
 
-This milestone implements initialization and empty collection inspection only.
-It does not implement record authoring, record parsing, lifecycle/evidence
-validation, or historical record checks. A populated collection is never
-reported as completely valid or exhaustively listed.
+BADR implements initialization and read-only BRR inspection and structural
+validation. ADR parsing, record authoring, evidence validation, and historical
+authorization checks remain unavailable. Populated BRR collections expose
+structural results with explicit incomplete coverage, never complete success.
 
 ```sh
 badr --repo /path/to/existing/repository init --baseline trunk
@@ -28,14 +28,49 @@ incomplete coverage (exit 3). Create the chosen local branch and its initial
 commit, then rerun validation. BADR does not assume another branch or fetch.
 This exception enables no governed record writes.
 
-`list` and `validate` are read-only and share collection inspection logic.
-Absent record directories and evidence, empty record directories, and an empty
-evidence file are valid. Other managed files return incomplete coverage until
-later milestones implement their validators. Unrelated files outside `.badr/`
-are not collected. Baselines resolve once to an immutable local commit ID;
-shallow Git history, missing baselines, and any historical managed file other
-than configuration prevent complete historical coverage. No snapshot is
-checked out and no history content is executed.
+`list`, `show <BRR-ID>`, and `validate` are read-only and share collection
+inspection logic. All operations inspect the whole managed collection before
+selection, so a filter cannot hide invalid records. Absent record directories
+and evidence, empty record directories, empty registry mappings, and an empty
+evidence file are valid. Nonempty ADR/evidence files return incomplete coverage.
+Unrelated files outside `.badr/` are not collected. Baselines resolve once to
+an immutable local commit ID; shallow Git history, missing baselines, and any
+historical managed file other than configuration prevent complete historical
+coverage. No snapshot is checked out and no history content is executed.
+
+BRR frontmatter and registry YAML reject duplicate/unknown keys, unsafe tags,
+malformed types, and invalid UTF-8. Only the exact remaining body is passed to
+`gherkin` 0.14.0. Checks cover Feature/Rule/scenario cardinality and names,
+populated outlines, matching Feature tags and metadata, owners, relationship
+list types and ID formats, filenames, registry identities/paths/prefixes,
+domain-local placement, glossaries, and registration of managed features.
+Managed symlinks, special files, path escapes, and unexpected storage layouts
+are refused. Validation never edits records, configuration, or evidence.
+
+Draft/proposed/approved BRRs have no applicability times; effective BRRs require
+`effective_from` and no `effective_until`; deprecated/superseded/retired BRRs
+retain activation and require an end time no earlier than activation. Timestamp
+strings require quoted YAML scalars, ISO 8601 seconds, and an explicit timezone.
+`saphyr-parser` events check scalar quoting, which Serde values do not retain. Future events are
+invalid. These checks establish structural lifecycle consistency, not an
+authorized historical transition. Owners are descriptive, never authorization.
+
+`list` supports `--type brr`, `--domain <slug>`, `--status <status>`,
+`--effective`, and `--pending-preview`. The last two flags are mutually
+exclusive; other filters intersect. All BRR statuses are accepted as status
+filters. Without flags, list returns all locally parsed BRRs. Each record is
+explicitly labeled `effective`, `pending_preview` (draft/proposed/approved), or
+`withdrawn`. Only effective records are currently applicable. Human `show`
+prints the selection and exact body; JSON records include all validated
+metadata and the exact body. An absent ID produces `record_not_found` when
+the collection has been structurally inspected. Invalid records may be omitted;
+read the coverage and diagnostics before using a partial inspection result.
+
+A populated BRR collection always reports evidence/history as `incomplete`
+(exit 3 unless another error takes precedence), including when no evidence file
+exists. Structural success never proves business-rule adequacy, scenario
+sufficiency, frozen-body integrity, historical prefix ownership, human approval,
+or implementation conformance. Relationship target/graph checks are deferred.
 
 ## Output and exits
 
@@ -63,21 +98,29 @@ there are no timestamps or random operation identifiers in these read reports.
 The same repository state produces the same JSON bytes.
 
 - `schema_version`: integer `1`; breaking contract changes require a new version.
-- `operation`: `init`, `list`, `validate`, or `arguments`.
+- `operation`: `init`, `list`, `show`, `validate`, or `arguments`.
 - `success`: true only for exit 0.
 - `result`: `created`/`unchanged` for successful init, `ok` for successful
   inspection, otherwise `invalid`, `incomplete`, or `operational_failure`.
 - `exit_code`: the process exit code.
-- `affected_ids`, `records`: empty arrays in this milestone. An empty array
-  with incomplete coverage does **not** assert that the collection is empty.
+- `affected_ids`: empty for these operations because no record is mutated.
+- `records`: BRR objects ordered by ID then path. Each has `type: "brr"`,
+  `id`, `domain`, `status`, `owners`, relationship lists, optional description
+  and applicability times, managed-relative `path`, Feature `title`,
+  `selection`, `currently_effective`, and exact UTF-8 `body` (JSON-escaped).
+  An empty array with incomplete coverage does **not** assert an empty collection.
 - `diagnostics`: ordered objects with `code`, `message`, and managed-relative
   `path` when applicable (otherwise null). Messages are human guidance;
-  consumers should branch on exit/coverage and diagnostic codes.
+  consumers should branch on exit/coverage and diagnostic codes. Gherkin
+  messages label body-relative and stored-file line numbers separately.
+  Frontmatter YAML locations start at input line 1 / stored-file line 2;
+  registry YAML locations are file-relative. Human diagnostics include paths.
 - `baseline_commit`: resolved immutable commit string, or null if unavailable.
 - `validation_coverage`: `configuration`, `collection`, `evidence`, `history`,
-  each `passed`, `incomplete`, or `not_checked`. Here `passed` means the
-  configuration is valid or the corresponding collection/history is empty;
-  it does not claim record/evidence validators have been implemented.
+  each `passed`, `incomplete`, or `not_checked`. Collection `passed` means
+  supported structural checks passed; unsupported ADR/evidence files prevent
+  complete collection coverage. Evidence/history `passed` covers only empty
+  record/evidence collections and histories containing configuration alone.
 - `pending_commit_durability`: true when `.badr/` has staged, unstaged,
   untracked, or ignored changes; false when clean; null when undetermined.
   A true result requires the caller to review and commit configuration;

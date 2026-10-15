@@ -462,3 +462,450 @@ fn literal_at_prefixed_baseline_names_are_supported() {
         git(dir.path(), &["rev-parse", "refs/heads/@team"])
     );
 }
+
+fn brr_repo() -> TempDir {
+    let dir = repo(true);
+    json(dir.path(), &["init", "--baseline", "trunk"], 0);
+    fs::create_dir_all(dir.path().join(".badr/brrs/domains/ordering/rules")).unwrap();
+    fs::write(
+        dir.path().join(".badr/brrs/domains/ordering/glossary.md"),
+        "# Ordering\n",
+    )
+    .unwrap();
+    fs::write(dir.path().join(".badr/brrs/registry.yaml"), "version: 1\ndomains:\n  ordering: ORD\nrules:\n  BRR-ORD-001: domains/ordering/rules/BRR-ORD-001-cancellation.feature\n").unwrap();
+    fs::write(dir.path().join(BRR_PATH), brr("proposed", "")).unwrap();
+    dir
+}
+const BRR_PATH: &str = ".badr/brrs/domains/ordering/rules/BRR-ORD-001-cancellation.feature";
+fn brr(status: &str, metadata: &str) -> String {
+    format!(
+        "---\nid: BRR-ORD-001\ndomain: ordering\nstatus: {status}\nowners: [Product, Engineering]\n{metadata}---\n@brr:BRR-ORD-001 @domain:ordering\nFeature: Cancellation\n  Rule: Customers can cancel before fulfilment\n    Scenario: Cancel early\n      Given an unfulfilled order\n      When its customer cancels\n      Then it is cancelled\n"
+    )
+}
+
+#[test]
+fn inspect_registered_brr_and_show_exact_body_without_writes() {
+    let dir = brr_repo();
+    let before = fs::read(dir.path().join(BRR_PATH)).unwrap();
+    let result = json(
+        dir.path(),
+        &[
+            "list", "--type", "brr", "--domain", "ordering", "--status", "proposed",
+        ],
+        3,
+    );
+    assert_eq!(result["validation_coverage"]["collection"], "passed");
+    assert_eq!(result["validation_coverage"]["history"], "incomplete");
+    assert_eq!(result["records"][0]["id"], "BRR-ORD-001");
+    assert_eq!(result["records"][0]["selection"], "pending_preview");
+    assert_eq!(result["records"][0]["currently_effective"], false);
+    let shown = json(dir.path(), &["show", "BRR-ORD-001"], 3);
+    assert_eq!(
+        shown["records"][0]["body"],
+        brr("proposed", "")
+            .split_once("---\n@brr")
+            .map(|(_, body)| format!("@brr{body}"))
+            .unwrap()
+    );
+    assert_eq!(
+        json(dir.path(), &["list", "--effective"], 3)["records"],
+        serde_json::json!([])
+    );
+    assert_eq!(
+        json(dir.path(), &["list", "--pending-preview"], 3)["records"]
+            .as_array()
+            .unwrap()
+            .len(),
+        1
+    );
+    let human = run(dir.path(), &["list", "--pending-preview"]);
+    assert!(String::from_utf8_lossy(&human.stdout).contains("pending_preview"));
+    assert_eq!(fs::read(dir.path().join(BRR_PATH)).unwrap(), before);
+    assert_eq!(
+        json(dir.path(), &["validate"], 3)["partial_write"],
+        serde_json::json!({"completed":[],"not_completed":[]})
+    );
+}
+
+#[test]
+fn brr_structure_outlines_and_source_lines_are_checked() {
+    let dir = brr_repo();
+    let original = brr("proposed", "");
+    let cases = [
+        original.replace("Feature: Cancellation", "Feature: One\nFeature: Two"),
+        original.replace("  Rule:", "  Rule: Extra\n  Rule:"),
+        original.replace("Customers can cancel before fulfilment", ""),
+        original.replace("    Scenario: Cancel early\n      Given an unfulfilled order\n      When its customer cancels\n      Then it is cancelled\n", ""),
+        original.replace("    Scenario: Cancel early", "    Scenario:"),
+        original.replace("    Scenario: Cancel early", "    Scenario Outline: Cancel <time>"),
+        original.replace("    Scenario: Cancel early", "    Scenario Outline: Cancel <time>") + "      Examples:\n        | time |\n",
+        original.replace("  Rule: Customers can cancel before fulfilment\n", ""),
+        original.replace("@brr:BRR-ORD-001", "@brr:BRR-ORD-002"),
+        original.replace("@domain:ordering", "@domain:shipping"),
+    ];
+    for text in cases {
+        fs::write(dir.path().join(BRR_PATH), &text).unwrap();
+        let result = json(dir.path(), &["validate"], 2);
+        assert_eq!(result["diagnostics"][0]["path"], BRR_PATH, "{text}");
+        assert_eq!(fs::read_to_string(dir.path().join(BRR_PATH)).unwrap(), text);
+    }
+    let outline = original.replace(
+        "    Scenario: Cancel early",
+        "    Scenario Outline: Cancel <time>",
+    ) + "      Examples:\n        | time |\n        | early |\n";
+    fs::write(dir.path().join(BRR_PATH), outline.replace('\n', "\r\n")).unwrap();
+    let result = json(dir.path(), &["show", "BRR-ORD-001"], 3);
+    assert_eq!(result["validation_coverage"]["collection"], "passed");
+    assert!(
+        result["records"][0]["body"]
+            .as_str()
+            .unwrap()
+            .contains("\r\n")
+    );
+    let no_rule = original.replace("  Rule: Customers can cancel before fulfilment\n", "");
+    fs::write(dir.path().join(BRR_PATH), no_rule).unwrap();
+    let message = json(dir.path(), &["validate"], 2)["diagnostics"][0]["message"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    assert!(
+        message.contains("body-relative line 2, stored-file line 8"),
+        "{message}"
+    );
+}
+
+#[test]
+fn brr_metadata_and_lifecycle_validation_reject_malformed_values() {
+    let dir = brr_repo();
+    let original = brr("proposed", "");
+    let cases = [
+        original.replace("id: BRR-ORD-001\n", ""),
+        original.replace("domain: ordering\n", ""),
+        original.replace("status: proposed\n", ""),
+        original.replace("owners: [Product, Engineering]\n", ""),
+        original.replace("id: BRR-ORD-001", "id: BRR-ord-001"),
+        original.replace("id: BRR-ORD-001", "id: BRR-ORD-01"),
+        original.replace("domain: ordering", "domain: Ordering"),
+        original.replace("owners: [Product, Engineering]", "owners: []"),
+        original.replace("owners: [Product, Engineering]", "owners: ['   ']"),
+        original.replace("owners: [Product, Engineering]", "owners: [42]"),
+        original.replace("owners: [Product, Engineering]", "owners: Product"),
+        brr("unknown", ""),
+        brr("proposed", "status: proposed\n"),
+        brr("proposed", "unknown: value\n"),
+        brr("proposed", "description: !unsafe value\n"),
+        brr("proposed", "description: null\n"),
+        brr("proposed", "description: [invalid]\n"),
+        brr("proposed", "related_architecture_decisions: [1]\n"),
+        brr("proposed", "related_architecture_decisions: ['wrong']\n"),
+        brr("proposed", "supersedes: BRR-ORD-002\n"),
+        brr("proposed", "superseded_by: [BRR-ORD-x]\n"),
+        brr("proposed", "effective_from: '2020-01-01T00:00:00Z'\n"),
+        brr("draft", "effective_until: '2020-01-01T00:00:00Z'\n"),
+        brr("approved", "effective_from: '2020-01-01T00:00:00Z'\n"),
+        brr("effective", ""),
+        brr("effective", "effective_from: '2020-02-30T00:00:00Z'\n"),
+        brr("effective", "effective_from: '2020-01-01T00:00:00'\n"),
+        brr("effective", "effective_from: '2020-01-01T00:00Z'\n"),
+        brr("effective", "effective_from: '2099-01-01T00:00:00Z'\n"),
+        brr("retired", "effective_until: '2020-01-01T00:00:00Z'\n"),
+        brr(
+            "retired",
+            "effective_from: '2020-01-02T00:00:00Z'\neffective_until: '2020-01-01T00:00:00Z'\n",
+        ),
+    ];
+    for text in cases {
+        fs::write(dir.path().join(BRR_PATH), &text).unwrap();
+        json(dir.path(), &["validate"], 2);
+        assert_eq!(fs::read_to_string(dir.path().join(BRR_PATH)).unwrap(), text);
+    }
+    fs::write(
+        dir.path().join(BRR_PATH),
+        b"---\nid: \xff\n---\nFeature: Invalid\n",
+    )
+    .unwrap();
+    json(dir.path(), &["validate"], 2);
+    for status in [
+        "draft",
+        "proposed",
+        "approved",
+        "effective",
+        "deprecated",
+        "superseded",
+        "retired",
+    ] {
+        let times = match status {
+            "effective" => "effective_from: '2020-01-01T05:30:00+05:30'\n",
+            "deprecated" | "superseded" | "retired" => {
+                "effective_from: '2020-01-01T05:30:00+05:30'\neffective_until: '2020-01-01T00:00:00Z'\n"
+            }
+            _ => "",
+        };
+        fs::write(dir.path().join(BRR_PATH), brr(status, &format!("description: A rule\nrelated_architecture_decisions: ['0001']\nsupersedes: [BRR-ORD-002]\nsuperseded_by: []\n{times}"))).unwrap();
+        let result = json(dir.path(), &["list", "--status", status], 3);
+        assert_eq!(result["validation_coverage"]["collection"], "passed");
+        assert_eq!(
+            result["records"][0]["currently_effective"],
+            status == "effective"
+        );
+        assert_eq!(
+            json(dir.path(), &["list", "--effective"], 3)["records"]
+                .as_array()
+                .unwrap()
+                .len(),
+            usize::from(status == "effective")
+        );
+    }
+}
+
+#[test]
+fn brr_registry_rejects_collisions_and_unregistered_or_misplaced_files() {
+    let dir = brr_repo();
+    let registry_path = dir.path().join(".badr/brrs/registry.yaml");
+    let original = fs::read_to_string(&registry_path).unwrap();
+    let cases = [
+        original.replace("version: 1", "version: 2"),
+        original.replace("version: 1", "version: 1\nversion: 1"),
+        original.clone() + "unknown: true\n",
+        original.replace("ordering: ORD", "ordering: !unsafe ORD"),
+        original.replace("ordering: ORD", "ordering: ord"),
+        original.replace("ordering: ORD", "ordering: ORD\n  shipping: ORD"),
+        original.replace("ordering: ORD", "ordering: ORD\n  ordering: SHP"),
+        original.replace("ordering: ORD", "Ordering: ORD"),
+        original.replace("ordering: ORD", "ordering: 123"),
+        original.replace("BRR-ORD-001: domains", "BRR-ORD-001: domains/ordering/rules/BRR-ORD-001-cancellation.feature\n  BRR-ORD-001: domains"),
+        original.clone() + "  BRR-ORD-0001: domains/ordering/rules/BRR-ORD-0001-other.feature\n",
+        original.clone() + "  BRR-ORD-002: domains/ordering/rules/BRR-ORD-001-cancellation.feature\n",
+        original.replace("domains/ordering/rules/BRR-ORD-001-cancellation.feature", "../outside.feature"),
+        original.replace("domains/ordering/rules/BRR-ORD-001-cancellation.feature", "/tmp/outside.feature"),
+        original.replace("domains/ordering/rules/BRR-ORD-001-cancellation.feature", "domains/ordering/rules/./BRR-ORD-001-cancellation.feature"),
+        original.replace("domains/ordering/rules/BRR-ORD-001-cancellation.feature", "domains/ordering/rules/missing.feature"),
+        original.replace("BRR-ORD-001:", "BRR-ORD-002:"),
+    ];
+    for text in cases {
+        fs::write(&registry_path, &text).unwrap();
+        json(dir.path(), &["validate"], 2);
+        assert_eq!(fs::read_to_string(&registry_path).unwrap(), text);
+    }
+    fs::write(&registry_path, &original).unwrap();
+    let glossary = dir.path().join(".badr/brrs/domains/ordering/glossary.md");
+    fs::remove_file(&glossary).unwrap();
+    json(dir.path(), &["validate"], 2);
+    fs::write(glossary, "# Ordering").unwrap();
+    fs::remove_file(&registry_path).unwrap();
+    json(dir.path(), &["validate"], 2);
+    fs::write(&registry_path, &original).unwrap();
+    let misplaced = ".badr/brrs/BRR-ORD-001-cancellation.feature";
+    fs::rename(dir.path().join(BRR_PATH), dir.path().join(misplaced)).unwrap();
+    fs::write(
+        &registry_path,
+        original.replace(
+            "domains/ordering/rules/BRR-ORD-001-cancellation.feature",
+            "BRR-ORD-001-cancellation.feature",
+        ),
+    )
+    .unwrap();
+    json(dir.path(), &["validate"], 2);
+    fs::rename(dir.path().join(misplaced), dir.path().join(BRR_PATH)).unwrap();
+    fs::write(&registry_path, original).unwrap();
+    fs::write(
+        dir.path()
+            .join(".badr/brrs/domains/ordering/rules/BRR-ORD-001-other.feature"),
+        brr("proposed", ""),
+    )
+    .unwrap();
+    json(dir.path(), &["validate"], 2);
+}
+
+#[test]
+fn empty_registry_is_valid_but_wrong_managed_file_types_are_not() {
+    let dir = repo(true);
+    json(dir.path(), &["init", "--baseline", "trunk"], 0);
+    fs::create_dir(dir.path().join(".badr/brrs")).unwrap();
+    fs::write(
+        dir.path().join(".badr/brrs/registry.yaml"),
+        "version: 1\ndomains: {}\nrules: {}\n",
+    )
+    .unwrap();
+    assert_eq!(
+        json(dir.path(), &["validate"], 0)["validation_coverage"]["collection"],
+        "passed"
+    );
+    fs::write(dir.path().join("unrelated.feature"), "not imported").unwrap();
+    json(dir.path(), &["list"], 0);
+    fs::remove_file(dir.path().join(".badr/brrs/registry.yaml")).unwrap();
+    fs::remove_dir(dir.path().join(".badr/brrs")).unwrap();
+    fs::write(dir.path().join(".badr/brrs"), "wrong root type").unwrap();
+    json(dir.path(), &["validate"], 2);
+}
+
+#[cfg(unix)]
+#[test]
+fn brr_managed_paths_refuse_symlinks_and_special_files() {
+    use std::os::unix::fs::symlink;
+    let dir = brr_repo();
+    let outside = tempfile::tempdir().unwrap();
+    let outside_file = outside.path().join("outside.feature");
+    fs::write(&outside_file, brr("proposed", "")).unwrap();
+    let path = dir.path().join(BRR_PATH);
+    fs::remove_file(&path).unwrap();
+    symlink(&outside_file, &path).unwrap();
+    json(dir.path(), &["validate"], 2);
+    assert_eq!(
+        fs::read_to_string(&outside_file).unwrap(),
+        brr("proposed", "")
+    );
+    fs::remove_file(&path).unwrap();
+    let rules = dir.path().join(".badr/brrs/domains/ordering/rules");
+    fs::remove_dir(&rules).unwrap();
+    symlink(outside.path(), &rules).unwrap();
+    json(dir.path(), &["validate"], 2);
+    fs::remove_file(&rules).unwrap();
+    fs::create_dir(&rules).unwrap();
+    let fifo = rules.join("BRR-ORD-001-cancellation.feature");
+    assert!(
+        Command::new("mkfifo")
+            .arg(&fifo)
+            .status()
+            .unwrap()
+            .success()
+    );
+    json(dir.path(), &["validate"], 2);
+}
+
+#[test]
+fn registry_paths_must_reference_features_and_filenames_must_match_identity() {
+    let dir = brr_repo();
+    let path = dir.path().join(BRR_PATH);
+    for name in [
+        "BRR-ORD-001-Cancellation.feature",
+        "BRR-ORD-002-cancellation.feature",
+        "BRR-ORD-001-.feature",
+    ] {
+        let renamed = path.with_file_name(name);
+        fs::rename(&path, &renamed).unwrap();
+        let result = json(dir.path(), &["validate"], 2);
+        assert!(
+            result["diagnostics"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|d| d["message"].as_str().unwrap().contains("Filename"))
+        );
+        fs::rename(renamed, &path).unwrap();
+    }
+    fs::remove_file(&path).unwrap();
+    fs::write(dir.path().join(".badr/brrs/registry.yaml"), "version: 1\ndomains:\n  ordering: ORD\nrules:\n  BRR-ORD-001: domains/ordering/glossary.md\n").unwrap();
+    json(dir.path(), &["validate"], 2);
+}
+
+#[test]
+fn body_diagnostics_and_json_order_are_deterministic() {
+    let dir = brr_repo();
+    let path = dir.path().join(BRR_PATH);
+    fs::write(
+        &path,
+        brr("proposed", "").replace("Feature: Cancellation", "not a feature"),
+    )
+    .unwrap();
+    let first = run(dir.path(), &["validate", "--json"]);
+    let result: Value = serde_json::from_slice(&first.stdout).unwrap();
+    assert!(
+        result["diagnostics"][0]["message"]
+            .as_str()
+            .unwrap()
+            .contains("body-relative line")
+    );
+    assert_eq!(
+        run(dir.path(), &["validate", "--json"]).stdout,
+        first.stdout
+    );
+    for text in [
+        "Feature: Missing frontmatter\n",
+        "---\nid: BRR-ORD-001\n",
+        "---\n---\nFeature: Missing metadata\n",
+    ] {
+        fs::write(&path, text).unwrap();
+        json(dir.path(), &["validate"], 2);
+    }
+    fs::write(&path, brr("proposed", "").replace("      Given an unfulfilled order", "      Given an unfulfilled order\n      \"\"\"\n      Feature: text inside an argument\n      Rule: text inside an argument\n      # language: nonexistent\n      \"\"\"")).unwrap();
+    assert_eq!(
+        json(dir.path(), &["validate"], 3)["validation_coverage"]["collection"],
+        "passed"
+    );
+    fs::write(
+        &path,
+        brr("proposed", "")
+            .replace("@brr:BRR-ORD-001", "# language: fr\n@brr:BRR-ORD-001")
+            .replace("Feature: Cancellation", "Fonctionnalité: Annulation")
+            .replace(
+                "Rule: Customers can cancel before fulfilment",
+                "Règle: Annuler avant expédition",
+            )
+            .replace("Scenario: Cancel early", "Plan du scénario: Annuler <time>")
+            .replace("Given an unfulfilled order", "Soit une commande")
+            .replace("When its customer cancels", "Quand le client annule")
+            .replace("Then it is cancelled", "Alors elle est annulée")
+            + "      Exemples:\n        | time |\n        | tôt |\n",
+    )
+    .unwrap();
+    assert_eq!(
+        json(dir.path(), &["validate"], 3)["validation_coverage"]["collection"],
+        "passed"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn unreadable_brr_is_an_operational_failure() {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = brr_repo();
+    let path = dir.path().join(BRR_PATH);
+    fs::set_permissions(&path, fs::Permissions::from_mode(0o0)).unwrap();
+    let output = run(dir.path(), &["validate", "--json"]);
+    fs::set_permissions(&path, fs::Permissions::from_mode(0o600)).unwrap();
+    assert_eq!(
+        output.status.code(),
+        Some(4),
+        "{}",
+        String::from_utf8_lossy(&output.stdout)
+    );
+}
+
+#[test]
+fn applicability_times_require_quoted_yaml_scalars() {
+    let dir = brr_repo();
+    let path = dir.path().join(BRR_PATH);
+    for metadata in [
+        "effective_from: 2020-01-01T00:00:00Z\n",
+        "'effective_from': 2020-01-01T00:00:00Z\n",
+        "effective_from: >-\n  2020-01-01T00:00:00Z\n",
+        "supersedes: &empty []\nsuperseded_by: *empty\neffective_from: 2020-01-01T00:00:00Z\n",
+        "effective_from: '2020-01-01T00:00:00Z'\neffective_until: 2020-01-02T00:00:00Z\n",
+    ] {
+        let status = if metadata.contains("effective_until") {
+            "retired"
+        } else {
+            "effective"
+        };
+        fs::write(&path, brr(status, metadata)).unwrap();
+        json(dir.path(), &["validate"], 2);
+    }
+    for metadata in [
+        "effective_from: \"2020-01-01T00:00:00Z\"\n",
+        "effective_from: \"2020\\x2d01-01T00:00:00Z\"\n",
+        "effective_from: &activation '2020-01-01T00:00:00Z'\n",
+        "description: &activation '2020-01-01T00:00:00Z'\neffective_from: *activation\n",
+    ] {
+        fs::write(&path, brr("effective", metadata)).unwrap();
+        assert_eq!(
+            json(dir.path(), &["validate"], 3)["validation_coverage"]["collection"],
+            "passed"
+        );
+    }
+    fs::write(&path, brr("effective", "effective_from: '2020-01-01T00:00:00Z'\n").replace("id: BRR-ORD-001\ndomain: ordering\nstatus: effective\nowners: [Product, Engineering]\neffective_from: '2020-01-01T00:00:00Z'\n", "{id: BRR-ORD-001, domain: ordering, status: effective, owners: [Product], effective_from: '2020-01-01T00:00:00Z'}\n")).unwrap();
+    assert_eq!(
+        json(dir.path(), &["validate"], 3)["validation_coverage"]["collection"],
+        "passed"
+    );
+}

@@ -29,8 +29,13 @@ enum Operation {
         #[arg(long)]
         baseline: String,
     },
-    /// Inspect the managed collection (empty collections supported in this milestone).
-    List,
+    /// Inspect managed BRRs with explicit applicability selection.
+    List {
+        #[command(flatten)]
+        filter: repository::Filter,
+    },
+    /// Show a managed BRR and its exact Gherkin body.
+    Show { id: String },
     /// Validate with explicit coverage reporting.
     Validate,
 }
@@ -61,7 +66,10 @@ fn main() -> ExitCode {
     };
     let report = match cli.command {
         Operation::Init { baseline } => repository::init(&cli.repo, &baseline),
-        Operation::List => repository::inspect(&cli.repo, "list"),
+        Operation::List { filter } => repository::select(&cli.repo, "list", &filter, None),
+        Operation::Show { id } => {
+            repository::select(&cli.repo, "show", &repository::Filter::default(), Some(&id))
+        }
         Operation::Validate => repository::inspect(&cli.repo, "validate"),
     };
     emit(report, cli.json)
@@ -72,9 +80,24 @@ fn emit(report: Report, json: bool) -> ExitCode {
         serde_json::to_string(&report).expect("report contains only JSON-safe values") + "\n"
     } else {
         for diagnostic in &report.diagnostics {
-            eprintln!("{}: {}", diagnostic.code, diagnostic.message);
+            let path = diagnostic.path.as_deref().unwrap_or("repository");
+            eprintln!("{} [{}]: {}", diagnostic.code, path, diagnostic.message);
         }
-        format!("{}: {}\n", report.operation, report.result)
+        let mut output = format!("{}: {}\n", report.operation, report.result);
+        for record in &report.records {
+            output.push_str(&format!(
+                "{} {} {} [{}] {}\n",
+                record.metadata.id,
+                record.metadata.domain,
+                record.metadata.status,
+                record.selection,
+                record.path
+            ));
+            if report.operation == "show" {
+                output.push_str(&record.body);
+            }
+        }
+        output
     };
     if io::stdout().lock().write_all(output.as_bytes()).is_err() {
         return ExitCode::from(4);

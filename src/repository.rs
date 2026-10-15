@@ -1,3 +1,6 @@
+#[path = "brr.rs"]
+mod brr;
+
 use serde::{Deserialize, Serialize};
 use std::{
     fs::{self, OpenOptions},
@@ -11,7 +14,7 @@ use std::{
 pub(crate) struct Diagnostic {
     pub code: String,
     pub message: String,
-    path: Option<String>,
+    pub path: Option<String>,
 }
 #[derive(Serialize)]
 pub(crate) struct Coverage {
@@ -33,7 +36,7 @@ pub(crate) struct Report {
     pub result: String,
     pub exit_code: u8,
     affected_ids: Vec<String>,
-    records: Vec<String>,
+    pub records: Vec<brr::Record>,
     pub diagnostics: Vec<Diagnostic>,
     baseline_commit: Option<String>,
     validation_coverage: Coverage,
@@ -351,7 +354,12 @@ pub(crate) fn inspect(target: &Path, operation: &str) -> Report {
 }
 
 fn inspect_collection(root: &Path, report: &mut Report) {
-    fn walk(root: &Path, path: &Path, report: &mut Report) -> io::Result<()> {
+    fn walk(
+        root: &Path,
+        path: &Path,
+        report: &mut Report,
+        files: &mut std::collections::BTreeSet<String>,
+    ) -> io::Result<()> {
         let mut entries = fs::read_dir(path)?.collect::<Result<Vec<_>, _>>()?;
         entries.sort_by_key(|entry| entry.file_name());
         for entry in entries {
@@ -366,7 +374,41 @@ fn inspect_collection(root: &Path, report: &mut Report) {
             if relative == Path::new(".badr/config.yaml") {
                 continue;
             }
+            if matches!(relative.to_str(), Some(".badr/brrs" | ".badr/adrs")) && !meta.is_dir() {
+                report.fail(
+                    2,
+                    "unsafe_path",
+                    "Record roots must be directories".into(),
+                    Some(relative),
+                );
+                continue;
+            }
             if meta.is_dir() {
+                if relative.starts_with(".badr/brrs") {
+                    let components: Vec<_> = relative.iter().map(|s| s.to_str()).collect();
+                    let valid = matches!(
+                        components.as_slice(),
+                        [Some(".badr"), Some("brrs")]
+                            | [Some(".badr"), Some("brrs"), Some("domains")]
+                            | [Some(".badr"), Some("brrs"), Some("domains"), Some(_)]
+                            | [
+                                Some(".badr"),
+                                Some("brrs"),
+                                Some("domains"),
+                                Some(_),
+                                Some("rules")
+                            ]
+                    );
+                    if !valid {
+                        report.fail(
+                            2,
+                            "unexpected_path",
+                            "Unexpected directory in BRR storage".into(),
+                            Some(relative),
+                        );
+                        continue;
+                    }
+                }
                 if !matches!(
                     relative
                         .components()
@@ -381,13 +423,27 @@ fn inspect_collection(root: &Path, report: &mut Report) {
                         Some(relative),
                     );
                 } else {
-                    walk(root, &path, report)?;
+                    walk(root, &path, report, files)?;
                 }
             } else if meta.is_file() {
                 if relative == Path::new(".badr/evidence.jsonl") && meta.len() == 0 {
                     continue;
                 }
-                report.fail(3, "checks_not_implemented", "Populated managed files require validation not implemented in this milestone; no complete or exhaustive result is available".into(), Some(relative));
+                if relative.starts_with(".badr/brrs") {
+                    files.insert(
+                        relative
+                            .to_str()
+                            .ok_or_else(|| {
+                                io::Error::new(
+                                    io::ErrorKind::InvalidInput,
+                                    "Managed paths must be UTF-8",
+                                )
+                            })?
+                            .to_owned(),
+                    );
+                } else {
+                    report.fail(3, "checks_not_implemented", "ADR/evidence validation is not implemented; no complete result is available".into(), Some(relative));
+                }
             } else {
                 report.fail(
                     2,
@@ -400,14 +456,21 @@ fn inspect_collection(root: &Path, report: &mut Report) {
         Ok(())
     }
     let start = report.diagnostics.len();
-    match walk(root, &root.join(".badr"), report) {
-        Ok(()) if report.diagnostics.len() == start => {
-            report.validation_coverage.collection = "passed";
-            report.validation_coverage.evidence = "passed";
-        }
+    let mut files = std::collections::BTreeSet::new();
+    match walk(root, &root.join(".badr"), report, &mut files) {
         Ok(()) => {
-            report.validation_coverage.collection = "incomplete";
-            report.validation_coverage.evidence = "incomplete";
+            brr::inspect(root, &files, report);
+            report.validation_coverage.collection = if report.diagnostics.len() == start {
+                "passed"
+            } else {
+                "incomplete"
+            };
+            report.validation_coverage.evidence =
+                if report.records.is_empty() && report.diagnostics.len() == start {
+                    "passed"
+                } else {
+                    "incomplete"
+                };
         }
         Err(e) => {
             report.validation_coverage.collection = "incomplete";
@@ -423,6 +486,10 @@ fn inspect_collection(root: &Path, report: &mut Report) {
                 None,
             );
         }
+    }
+    let has_brrs = files.iter().any(|path| path.ends_with(".feature"));
+    if has_brrs {
+        report.fail(3, "authorization_checks_incomplete", "BRR structural checks do not establish business-rule adequacy, approval authorization, frozen bodies, historical prefix ownership, or implementation conformance; evidence and historical authorization checks are deferred.".into(), None);
     }
     report.validation_coverage.history = "incomplete";
     let Some(commit) = report.baseline_commit.clone() else {
@@ -460,7 +527,8 @@ fn inspect_collection(root: &Path, report: &mut Report) {
             .all(|line| line.is_empty() || line == ".badr/config.yaml"))
     })();
     match checks {
-        Ok(true) => report.validation_coverage.history = "passed",
+        Ok(true) if !has_brrs => report.validation_coverage.history = "passed",
+        Ok(true) => {},
         Ok(false) => report.fail(3, "history_incomplete", "Shallow history or historical managed records require checks not implemented in this milestone. Supply complete local history; historical record validation is deferred.".into(), None),
         Err(e) => report.io(e),
     }
@@ -488,4 +556,40 @@ fn durability(root: &Path, report: &mut Report) {
         ),
         Err(e) => report.io(e),
     }
+}
+
+#[derive(clap::Args, Default)]
+pub(crate) struct Filter {
+    #[arg(long = "type", value_parser = ["brr"])]
+    kind: Option<String>,
+    #[arg(long)]
+    domain: Option<String>,
+    #[arg(long, value_parser = ["draft", "proposed", "approved", "effective", "deprecated", "superseded", "retired"])]
+    status: Option<String>,
+    #[arg(long, conflicts_with = "pending_preview")]
+    effective: bool,
+    #[arg(long)]
+    pending_preview: bool,
+}
+pub(crate) fn select(target: &Path, operation: &str, filter: &Filter, id: Option<&str>) -> Report {
+    let mut report = inspect(target, operation);
+    report.records.retain(|record| {
+        let m = &record.metadata;
+        id.is_none_or(|id| m.id == id)
+            && filter.domain.as_ref().is_none_or(|d| m.domain == *d)
+            && filter.status.as_ref().is_none_or(|s| m.status == *s)
+            && (!filter.effective || record.currently_effective)
+            && (!filter.pending_preview || record.selection == "pending_preview")
+    });
+    if let Some(id) = id {
+        if report.records.is_empty() && report.validation_coverage.collection == "passed" {
+            report.fail(
+                2,
+                "record_not_found",
+                format!("No managed BRR with ID {id}"),
+                None,
+            );
+        }
+    }
+    report
 }
