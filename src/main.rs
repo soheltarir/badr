@@ -1,3 +1,4 @@
+mod adr;
 mod repository;
 
 use clap::{Parser, Subcommand};
@@ -29,12 +30,12 @@ enum Operation {
         #[arg(long)]
         baseline: String,
     },
-    /// Inspect managed BRRs with explicit applicability selection.
+    /// Inspect managed records with explicit applicability selection.
     List {
         #[command(flatten)]
         filter: repository::Filter,
     },
-    /// Show a managed BRR and its exact Gherkin body.
+    /// Show a managed record and its exact decision or Gherkin body.
     Show { id: String },
     /// Validate with explicit coverage reporting.
     Validate,
@@ -80,21 +81,49 @@ fn emit(report: Report, json: bool) -> ExitCode {
         serde_json::to_string(&report).expect("report contains only JSON-safe values") + "\n"
     } else {
         for diagnostic in &report.diagnostics {
-            let path = diagnostic.path.as_deref().unwrap_or("repository");
-            eprintln!("{} [{}]: {}", diagnostic.code, path, diagnostic.message);
+            let location = diagnostic.path.as_deref().unwrap_or("repository");
+            let lines = match (diagnostic.stored_file_line, diagnostic.body_line) {
+                (Some(file), Some(body)) => format!(" (stored-file line {file}, body line {body})"),
+                (Some(file), None) => format!(" (stored-file line {file})"),
+                _ => String::new(),
+            };
+            eprintln!(
+                "{}: {location}{lines}: {}",
+                diagnostic.code, diagnostic.message
+            );
         }
         let mut output = format!("{}: {}\n", report.operation, report.result);
         for record in &report.records {
-            output.push_str(&format!(
-                "{} {} {} [{}] {}\n",
-                record.metadata.id,
-                record.metadata.domain,
-                record.metadata.status,
-                record.selection,
-                record.path
-            ));
-            if report.operation == "show" {
-                output.push_str(&record.body);
+            match record {
+                repository::Record::Brr(record) => {
+                    output.push_str(&format!(
+                        "{} {} {} [{}] {}\n",
+                        record.metadata.id,
+                        record.metadata.domain,
+                        record.metadata.status,
+                        record.selection,
+                        record.path
+                    ));
+                    if report.operation == "show" {
+                        output.push_str(&record.body);
+                    }
+                }
+                repository::Record::Adr(record) => {
+                    output.push_str(&format!(
+                        "{} adr {} {}{}\n",
+                        record.metadata.id,
+                        record.metadata.status,
+                        record.path,
+                        if record.directs_new_work {
+                            " (directs new work; existing-code conformance not assessed)"
+                        } else {
+                            ""
+                        }
+                    ));
+                    if let Some(body) = &record.decision_body {
+                        output.push_str(body);
+                    }
+                }
             }
         }
         output

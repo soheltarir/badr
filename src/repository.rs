@@ -15,13 +15,16 @@ pub(crate) struct Diagnostic {
     pub code: String,
     pub message: String,
     pub path: Option<String>,
+    pub record_id: Option<String>,
+    pub stored_file_line: Option<usize>,
+    pub body_line: Option<usize>,
 }
 #[derive(Serialize)]
 pub(crate) struct Coverage {
     configuration: &'static str,
-    collection: &'static str,
-    evidence: &'static str,
-    history: &'static str,
+    pub(crate) collection: &'static str,
+    pub(crate) evidence: &'static str,
+    pub(crate) history: &'static str,
 }
 #[derive(Serialize)]
 pub(crate) struct Writes {
@@ -36,12 +39,32 @@ pub(crate) struct Report {
     pub result: String,
     pub exit_code: u8,
     affected_ids: Vec<String>,
-    pub records: Vec<brr::Record>,
+    pub records: Vec<Record>,
     pub diagnostics: Vec<Diagnostic>,
     baseline_commit: Option<String>,
-    validation_coverage: Coverage,
+    pub(crate) validation_coverage: Coverage,
     pending_commit_durability: Option<bool>,
     partial_write: Writes,
+}
+#[derive(Serialize)]
+#[serde(untagged)]
+pub(crate) enum Record {
+    Brr(brr::Record),
+    Adr(crate::adr::Record),
+}
+impl Record {
+    fn id(&self) -> &str {
+        match self {
+            Self::Brr(r) => &r.metadata.id,
+            Self::Adr(r) => &r.metadata.id,
+        }
+    }
+    fn path(&self) -> &str {
+        match self {
+            Self::Brr(r) => &r.path,
+            Self::Adr(r) => &r.path,
+        }
+    }
 }
 impl Report {
     fn new(operation: &str) -> Self {
@@ -73,7 +96,7 @@ impl Report {
         report.fail(2, code, message, None);
         report
     }
-    fn fail(&mut self, exit: u8, code: &str, message: String, path: Option<&Path>) {
+    pub(crate) fn fail(&mut self, exit: u8, code: &str, message: String, path: Option<&Path>) {
         // Invalidity outranks incomplete coverage; operational failures outrank both.
         if self.exit_code == 0 || exit == 4 || (exit == 2 && self.exit_code == 3) {
             self.exit_code = exit;
@@ -89,9 +112,12 @@ impl Report {
             code: code.into(),
             message,
             path: path.map(|p| p.to_string_lossy().into_owned()),
+            record_id: None,
+            stored_file_line: None,
+            body_line: None,
         });
     }
-    fn io(&mut self, error: io::Error) {
+    pub(crate) fn io(&mut self, error: io::Error) {
         self.fail(4, "io_error", error.to_string(), None);
     }
 }
@@ -153,7 +179,7 @@ fn root(target: &Path, report: &mut Report) -> Option<PathBuf> {
         }
     }
 }
-fn safe_entry(path: &Path) -> io::Result<Option<fs::Metadata>> {
+pub(crate) fn safe_entry(path: &Path) -> io::Result<Option<fs::Metadata>> {
     match fs::symlink_metadata(path) {
         Ok(meta) if meta.file_type().is_symlink() => Err(io::Error::new(
             io::ErrorKind::InvalidInput,
@@ -365,6 +391,9 @@ fn inspect_collection(root: &Path, report: &mut Report) {
         for entry in entries {
             let path = entry.path();
             let relative = path.strip_prefix(root).expect("managed path beneath root");
+            if relative == Path::new(".badr/adrs") {
+                continue;
+            }
             let meta = safe_entry(&path)?.ok_or_else(|| {
                 io::Error::new(
                     io::ErrorKind::NotFound,
@@ -442,7 +471,13 @@ fn inspect_collection(root: &Path, report: &mut Report) {
                             .to_owned(),
                     );
                 } else {
-                    report.fail(3, "checks_not_implemented", "ADR/evidence validation is not implemented; no complete result is available".into(), Some(relative));
+                    report.fail(
+                        3,
+                        "checks_not_implemented",
+                        "Evidence validation is not implemented; no complete result is available"
+                            .into(),
+                        Some(relative),
+                    );
                 }
             } else {
                 report.fail(
@@ -487,6 +522,17 @@ fn inspect_collection(root: &Path, report: &mut Report) {
             );
         }
     }
+    let has_adrs = crate::adr::inspect(root, report);
+    report
+        .records
+        .sort_by(|a, b| a.id().cmp(b.id()).then(a.path().cmp(b.path())));
+    if report.operation != "show" {
+        for record in &mut report.records {
+            if let Record::Adr(record) = record {
+                record.decision_body = None;
+            }
+        }
+    }
     let has_brrs = files.iter().any(|path| path.ends_with(".feature"));
     if has_brrs {
         report.fail(3, "authorization_checks_incomplete", "BRR structural checks do not establish business-rule adequacy, approval authorization, frozen bodies, historical prefix ownership, or implementation conformance; evidence and historical authorization checks are deferred.".into(), None);
@@ -527,7 +573,8 @@ fn inspect_collection(root: &Path, report: &mut Report) {
             .all(|line| line.is_empty() || line == ".badr/config.yaml"))
     })();
     match checks {
-        Ok(true) if !has_brrs => report.validation_coverage.history = "passed",
+        Ok(true) if !has_brrs && !has_adrs => report.validation_coverage.history = "passed",
+        Ok(true) if has_adrs => report.fail(3, "history_incomplete", "ADR transition and lifecycle-note history checks are not implemented.".into(), None),
         Ok(true) => {},
         Ok(false) => report.fail(3, "history_incomplete", "Shallow history or historical managed records require checks not implemented in this milestone. Supply complete local history; historical record validation is deferred.".into(), None),
         Err(e) => report.io(e),
@@ -560,33 +607,54 @@ fn durability(root: &Path, report: &mut Report) {
 
 #[derive(clap::Args, Default)]
 pub(crate) struct Filter {
-    #[arg(long = "type", value_parser = ["brr"])]
+    #[arg(long = "type", value_parser = ["brr", "adr"])]
     kind: Option<String>,
     #[arg(long)]
     domain: Option<String>,
-    #[arg(long, value_parser = ["draft", "proposed", "approved", "effective", "deprecated", "superseded", "retired"])]
+    #[arg(long, value_parser = ["draft", "proposed", "approved", "effective", "deprecated", "superseded", "retired", "rejected"])]
     status: Option<String>,
     #[arg(long, conflicts_with = "pending_preview")]
     effective: bool,
-    #[arg(long)]
+    #[arg(long, conflicts_with = "directing")]
     pending_preview: bool,
+    #[arg(long, conflicts_with = "effective")]
+    directing: bool,
 }
 pub(crate) fn select(target: &Path, operation: &str, filter: &Filter, id: Option<&str>) -> Report {
     let mut report = inspect(target, operation);
     report.records.retain(|record| {
-        let m = &record.metadata;
-        id.is_none_or(|id| m.id == id)
-            && filter.domain.as_ref().is_none_or(|d| m.domain == *d)
-            && filter.status.as_ref().is_none_or(|s| m.status == *s)
-            && (!filter.effective || record.currently_effective)
-            && (!filter.pending_preview || record.selection == "pending_preview")
+        if id.is_some_and(|id| record.id() != id) {
+            return false;
+        }
+        match record {
+            Record::Brr(record) => {
+                let m = &record.metadata;
+                filter.kind.as_deref().is_none_or(|kind| kind == "brr")
+                    && filter.domain.as_ref().is_none_or(|d| m.domain == *d)
+                    && filter.status.as_ref().is_none_or(|s| m.status == *s)
+                    && (!filter.effective || record.currently_effective)
+                    && (!filter.pending_preview || record.selection == "pending_preview")
+                    && !filter.directing
+            }
+            Record::Adr(record) => {
+                filter.kind.as_deref().is_none_or(|kind| kind == "adr")
+                    && filter.domain.is_none()
+                    && filter
+                        .status
+                        .as_ref()
+                        .is_none_or(|s| record.metadata.status == *s)
+                    && (!filter.directing || record.directs_new_work)
+                    && !filter.effective
+                    && !filter.pending_preview
+            }
+        }
     });
     if let Some(id) = id {
-        if report.records.is_empty() && report.validation_coverage.collection == "passed" {
+        if report.records.is_empty() {
             report.fail(
                 2,
                 "record_not_found",
-                format!("No managed BRR with ID {id}"),
+                format!("No structurally valid managed record with ID {id}"),
                 None,
             );
         }

@@ -565,9 +565,6 @@ pub(super) fn inspect(root: &Path, files: &BTreeSet<String>, report: &mut Report
                 );
             }
         }
-        report.records.push(record);
+        report.records.push(super::Record::Brr(record));
     }
-    report
-        .records
-        .sort_by(|a, b| a.metadata.id.cmp(&b.metadata.id).then(a.path.cmp(&b.path)));
 }

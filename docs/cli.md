@@ -1,8 +1,8 @@
 # BADR CLI contract, version 1
 
-BADR implements initialization and read-only BRR inspection and structural
-validation. ADR parsing, record authoring, evidence validation, and historical
-authorization checks remain unavailable. Populated BRR collections expose
+BADR implements initialization and read-only BRR/ADR inspection and structural
+validation. Record authoring, evidence validation, and historical authorization
+checks remain unavailable. Populated record collections expose
 structural results with explicit incomplete coverage, never complete success.
 
 ```sh
@@ -28,11 +28,11 @@ incomplete coverage (exit 3). Create the chosen local branch and its initial
 commit, then rerun validation. BADR does not assume another branch or fetch.
 This exception enables no governed record writes.
 
-`list`, `show <BRR-ID>`, and `validate` are read-only and share collection
+`list`, `show <id>`, and `validate` are read-only and share collection
 inspection logic. All operations inspect the whole managed collection before
 selection, so a filter cannot hide invalid records. Absent record directories
 and evidence, empty record directories, empty registry mappings, and an empty
-evidence file are valid. Nonempty ADR/evidence files return incomplete coverage.
+evidence file are valid. Nonempty evidence files return incomplete coverage.
 Unrelated files outside `.badr/` are not collected. Baselines resolve once to
 an immutable local commit ID; shallow Git history, missing baselines, and any
 historical managed file other than configuration prevent complete historical
@@ -55,15 +55,14 @@ strings require quoted YAML scalars, ISO 8601 seconds, and an explicit timezone.
 invalid. These checks establish structural lifecycle consistency, not an
 authorized historical transition. Owners are descriptive, never authorization.
 
-`list` supports `--type brr`, `--domain <slug>`, `--status <status>`,
+`list` supports `--type brr|adr`, `--domain <slug>`, `--status <status>`,
 `--effective`, and `--pending-preview`. The last two flags are mutually
 exclusive; other filters intersect. All BRR statuses are accepted as status
-filters. Without flags, list returns all locally parsed BRRs. Each record is
+filters. Without flags, list returns all locally parsed records. Each record is
 explicitly labeled `effective`, `pending_preview` (draft/proposed/approved), or
 `withdrawn`. Only effective records are currently applicable. Human `show`
 prints the selection and exact body; JSON records include all validated
-metadata and the exact body. An absent ID produces `record_not_found` when
-the collection has been structurally inspected. Invalid records may be omitted;
+metadata and the exact body. An absent or invalid ID produces `record_not_found`. Invalid records may be omitted;
 read the coverage and diagnostics before using a partial inspection result.
 
 A populated BRR collection always reports evidence/history as `incomplete`
@@ -71,6 +70,55 @@ A populated BRR collection always reports evidence/history as `incomplete`
 exists. Structural success never proves business-rule adequacy, scenario
 sufficiency, frozen-body integrity, historical prefix ownership, human approval,
 or implementation conformance. Relationship target/graph checks are deferred.
+
+## ADR inspection
+
+
+```sh
+badr list --type adr --status proposed
+badr list --directing --json
+badr show 0001 --json
+```
+
+`--type` accepts `adr` or `brr`. `--status`
+accepts `proposed`, `approved`, `rejected`, `deprecated`, and `superseded`.
+`--directing` selects approved ADRs as directing new work in this checkout;
+it does not assert that existing code conforms or that approval evidence was
+verified. Filters combine, and malformed/unselected records still affect the
+result. `show` takes an exact quoted metadata ID (including padding), never a
+path; absent/invalid records return exit 2.
+
+Each record contains `type`, `id`, `status`, `date`, `path`, `decision-makers`,
+relationship arrays, `directs_new_work`, and `body_start_line`. Only `show`
+also includes `decision_body`, the exact UTF-8 decision bytes decoded as a JSON
+string (including whitespace, comments, and original LF/CRLF line endings).
+Human `show` prints that body after the record summary. Frontmatter and the
+optional final lifecycle-notes section are excluded; whitespace before the
+lifecycle heading remains part of the decision body. No ADR index is created.
+
+ADR files must be directly under `.badr/adrs/`, with numeric ID and lowercase
+hyphen-separated title filenames. IDs require at least four digits and exact
+filename/frontmatter agreement; alternate padding still collides numerically.
+YAML uses the established `yaml_serde` parser; `yaml-rust2` scans quote styles
+and explicit tags. Required `id` and calendar `date` must be quoted; ADR
+relationship IDs must also be quoted. Duplicate/unknown keys, all explicit
+tags, invalid UTF-8, invalid types/statuses/dates, and unsafe paths are errors.
+Omitted relationship fields are empty lists; explicit null is invalid.
+Decision-makers, when present, are a list of nonempty descriptions.
+
+Required sections are level-two Context and Problem Statement, Decision
+Drivers, Considered Options, and Decision Outcome, plus level-two Consequences
+or level-three Consequences under the outcome. Sections need content, with
+rationale text under Decision Outcome (a Rationale subsection is allowed).
+Explicit unresolved items are allowed; wording and adequacy require human review. Detailed option analysis
+and Confirmation are optional. CommonMark parsing ignores fake headings in
+fences, indented code, and nested blockquotes/lists.
+
+An optional `## Lifecycle notes` must be the final section, containing one or
+more `### YYYY-MM-DD` headings (optionally followed by a title) with nonempty
+note text. It cannot precede later decision sections. These are structural
+checks: actual append-only history and the adequacy of lifecycle declarations
+remain unverified. Headings alone cannot prove an authorized transition.
 
 ## Output and exits
 
@@ -108,9 +156,13 @@ The same repository state produces the same JSON bytes.
   `id`, `domain`, `status`, `owners`, relationship lists, optional description
   and applicability times, managed-relative `path`, Feature `title`,
   `selection`, `currently_effective`, and exact UTF-8 `body` (JSON-escaped).
-  An empty array with incomplete coverage does **not** assert an empty collection.
+  ADR objects use the fields described above. Mixed results are ordered by ID
+  then path. An empty array with incomplete coverage does **not** assert an empty collection.
 - `diagnostics`: ordered objects with `code`, `message`, and managed-relative
-  `path` when applicable (otherwise null). Messages are human guidance;
+  `path` when applicable (otherwise null), `record_id`, `stored_file_line`, and
+  `body_line` (null when not available). Structured ADR line numbers are 1-based,
+  with stored-file lines including frontmatter and body lines excluding it.
+  Messages are human guidance;
   consumers should branch on exit/coverage and diagnostic codes. Gherkin
   messages label body-relative and stored-file line numbers separately.
   Frontmatter YAML locations start at input line 1 / stored-file line 2;
@@ -118,7 +170,7 @@ The same repository state produces the same JSON bytes.
 - `baseline_commit`: resolved immutable commit string, or null if unavailable.
 - `validation_coverage`: `configuration`, `collection`, `evidence`, `history`,
   each `passed`, `incomplete`, or `not_checked`. Collection `passed` means
-  supported structural checks passed; unsupported ADR/evidence files prevent
+  supported structural checks passed; unsupported evidence files prevent
   complete collection coverage. Evidence/history `passed` covers only empty
   record/evidence collections and histories containing configuration alone.
 - `pending_commit_durability`: true when `.badr/` has staged, unstaged,

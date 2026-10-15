@@ -236,7 +236,7 @@ fn populated_collections_and_historical_records_never_claim_complete_success() {
     fs::create_dir_all(dir.path().join(".badr/adrs")).unwrap();
     fs::write(dir.path().join(".badr/adrs/0001-example.md"), "unvalidated").unwrap();
     for operation in ["list", "validate"] {
-        let result = json(dir.path(), &[operation], 3);
+        let result = json(dir.path(), &[operation], 2);
         assert_eq!(result["validation_coverage"]["collection"], "incomplete");
         assert_eq!(
             result["diagnostics"][0]["path"],
@@ -908,4 +908,43 @@ fn applicability_times_require_quoted_yaml_scalars() {
         json(dir.path(), &["validate"], 3)["validation_coverage"]["collection"],
         "passed"
     );
+}
+
+#[test]
+fn mixed_brr_and_adr_collections_keep_type_status_and_authority_filters() {
+    let dir = brr_repo();
+    fs::create_dir(dir.path().join(".badr/adrs")).unwrap();
+    let path = dir.path().join(".badr/adrs/0001-storage.md");
+    fs::write(&path, "---\nid: \"0001\"\nstatus: approved\ndate: \"2026-10-15\"\n---\n# Storage\n\n## Context and Problem Statement\nNeed storage.\n\n## Decision Drivers\nSimplicity.\n\n## Considered Options\nFiles or database.\n\n## Decision Outcome\nFiles because Git gives history.\n\n### Consequences\nReviewable changes.\n").unwrap();
+    let all = json(dir.path(), &["list"], 3);
+    assert_eq!(all["records"].as_array().unwrap().len(), 2);
+    assert_eq!(all["validation_coverage"]["collection"], "passed");
+    for (kind, id) in [("brr", "BRR-ORD-001"), ("adr", "0001")] {
+        let selected = json(dir.path(), &["list", "--type", kind], 3);
+        assert_eq!(selected["records"].as_array().unwrap().len(), 1);
+        assert_eq!(selected["records"][0]["id"], id);
+        assert_eq!(json(dir.path(), &["show", id], 3)["records"][0]["id"], id);
+    }
+    assert_eq!(
+        json(dir.path(), &["list", "--status", "approved"], 3)["records"][0]["id"],
+        "0001"
+    );
+    assert_eq!(
+        json(dir.path(), &["list", "--domain", "ordering"], 3)["records"][0]["id"],
+        "BRR-ORD-001"
+    );
+    assert_eq!(
+        json(dir.path(), &["list", "--pending-preview"], 3)["records"][0]["id"],
+        "BRR-ORD-001"
+    );
+    assert_eq!(
+        json(dir.path(), &["list", "--directing"], 3)["records"][0]["id"],
+        "0001"
+    );
+    assert_eq!(
+        json(dir.path(), &["list", "--effective"], 3)["records"],
+        serde_json::json!([])
+    );
+    fs::write(&path, "malformed ADR").unwrap();
+    json(dir.path(), &["list", "--type", "brr"], 2);
 }

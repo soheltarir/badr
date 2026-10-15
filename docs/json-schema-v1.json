@@ -3,70 +3,370 @@
   "title": "BADR operation report v1",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema_version", "success", "operation", "result", "exit_code", "affected_ids", "records", "diagnostics", "baseline_commit", "validation_coverage", "pending_commit_durability", "partial_write"],
+  "required": [
+    "schema_version",
+    "success",
+    "operation",
+    "result",
+    "exit_code",
+    "affected_ids",
+    "records",
+    "diagnostics",
+    "baseline_commit",
+    "validation_coverage",
+    "pending_commit_durability",
+    "partial_write"
+  ],
   "properties": {
-    "schema_version": {"const": 1},
-    "success": {"type": "boolean"},
-    "operation": {"enum": ["init", "list", "show", "validate", "arguments"]},
-    "result": {"enum": ["created", "unchanged", "ok", "invalid", "incomplete", "operational_failure"]},
-    "exit_code": {"enum": [0, 2, 3, 4]},
-    "affected_ids": {"type": "array", "items": {"type": "string"}, "maxItems": 0},
-    "records": {"type": "array", "items": {"$ref": "#/$defs/brr"}},
+    "schema_version": {
+      "const": 1
+    },
+    "success": {
+      "type": "boolean"
+    },
+    "operation": {
+      "enum": [
+        "init",
+        "list",
+        "validate",
+        "show",
+        "arguments"
+      ]
+    },
+    "result": {
+      "enum": [
+        "created",
+        "unchanged",
+        "ok",
+        "invalid",
+        "incomplete",
+        "operational_failure"
+      ]
+    },
+    "exit_code": {
+      "enum": [
+        0,
+        2,
+        3,
+        4
+      ]
+    },
+    "affected_ids": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 0
+    },
+    "records": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          {
+            "$ref": "#/$defs/adr"
+          },
+          {
+            "$ref": "#/$defs/brr"
+          }
+        ]
+      }
+    },
     "diagnostics": {
       "type": "array",
       "items": {
-        "type": "object", "additionalProperties": false,
-        "required": ["code", "message", "path"],
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "code",
+          "message",
+          "path",
+          "record_id",
+          "stored_file_line",
+          "body_line"
+        ],
         "properties": {
-          "code": {"type": "string"},
-          "message": {"type": "string"},
-          "path": {"type": ["string", "null"]}
+          "code": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "path": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "record_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "stored_file_line": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1
+          },
+          "body_line": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1
+          }
         }
       }
     },
-    "baseline_commit": {"type": ["string", "null"]},
+    "baseline_commit": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
     "validation_coverage": {
-      "type": "object", "additionalProperties": false,
-      "required": ["configuration", "collection", "evidence", "history"],
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "configuration",
+        "collection",
+        "evidence",
+        "history"
+      ],
       "properties": {
-        "configuration": {"$ref": "#/$defs/coverage"},
-        "collection": {"$ref": "#/$defs/coverage"},
-        "evidence": {"$ref": "#/$defs/coverage"},
-        "history": {"$ref": "#/$defs/coverage"}
+        "configuration": {
+          "$ref": "#/$defs/coverage"
+        },
+        "collection": {
+          "$ref": "#/$defs/coverage"
+        },
+        "evidence": {
+          "$ref": "#/$defs/coverage"
+        },
+        "history": {
+          "$ref": "#/$defs/coverage"
+        }
       }
     },
-    "pending_commit_durability": {"type": ["boolean", "null"]},
+    "pending_commit_durability": {
+      "type": [
+        "boolean",
+        "null"
+      ]
+    },
     "partial_write": {
-      "type": "object", "additionalProperties": false,
-      "required": ["completed", "not_completed"],
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "completed",
+        "not_completed"
+      ],
       "properties": {
-        "completed": {"type": "array", "items": {"type": "string"}},
-        "not_completed": {"type": "array", "items": {"type": "string"}}
+        "completed": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "not_completed": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
       }
     }
   },
   "$defs": {
-    "coverage": {"enum": ["passed", "incomplete", "not_checked"]},
-    "brr": {
-      "type": "object", "additionalProperties": false,
-      "required": ["type", "id", "domain", "status", "owners", "related_architecture_decisions", "supersedes", "superseded_by", "path", "title", "selection", "currently_effective", "body"],
+    "coverage": {
+      "enum": [
+        "passed",
+        "incomplete",
+        "not_checked"
+      ]
+    },
+    "adr": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "status",
+        "date",
+        "decision-makers",
+        "supersedes",
+        "superseded_by",
+        "related_adrs",
+        "related_business_rules",
+        "type",
+        "path",
+        "directs_new_work",
+        "body_start_line"
+      ],
       "properties": {
-        "type": {"const": "brr"},
-        "id": {"type": "string", "pattern": "^BRR-[A-Z]+-[0-9]{3,}$"},
-        "domain": {"type": "string"},
-        "status": {"enum": ["draft", "proposed", "approved", "effective", "deprecated", "superseded", "retired"]},
-        "owners": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
-        "description": {"type": "string"},
-        "effective_from": {"type": "string"},
-        "effective_until": {"type": "string"},
-        "related_architecture_decisions": {"type": "array", "items": {"type": "string", "pattern": "^[0-9]{4,}$"}},
-        "supersedes": {"type": "array", "items": {"type": "string", "pattern": "^BRR-[A-Z]+-[0-9]{3,}$"}},
-        "superseded_by": {"type": "array", "items": {"type": "string", "pattern": "^BRR-[A-Z]+-[0-9]{3,}$"}},
-        "path": {"type": "string"},
-        "title": {"type": "string"},
-        "selection": {"enum": ["effective", "pending_preview", "withdrawn"]},
-        "currently_effective": {"type": "boolean"},
-        "body": {"type": "string"}
+        "id": {
+          "type": "string",
+          "pattern": "^[0-9]{4,}$"
+        },
+        "status": {
+          "enum": [
+            "proposed",
+            "approved",
+            "rejected",
+            "deprecated",
+            "superseded"
+          ]
+        },
+        "date": {
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "type": {
+          "const": "adr"
+        },
+        "path": {
+          "type": "string"
+        },
+        "directs_new_work": {
+          "type": "boolean"
+        },
+        "body_start_line": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "decision_body": {
+          "type": "string"
+        },
+        "decision-makers": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "supersedes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "superseded_by": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "related_adrs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "related_business_rules": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "brr": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "id",
+        "domain",
+        "status",
+        "owners",
+        "related_architecture_decisions",
+        "supersedes",
+        "superseded_by",
+        "path",
+        "title",
+        "selection",
+        "currently_effective",
+        "body"
+      ],
+      "properties": {
+        "type": {
+          "const": "brr"
+        },
+        "id": {
+          "type": "string",
+          "pattern": "^BRR-[A-Z]+-[0-9]{3,}$"
+        },
+        "domain": {
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "draft",
+            "proposed",
+            "approved",
+            "effective",
+            "deprecated",
+            "superseded",
+            "retired"
+          ]
+        },
+        "owners": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "description": {
+          "type": "string"
+        },
+        "effective_from": {
+          "type": "string"
+        },
+        "effective_until": {
+          "type": "string"
+        },
+        "related_architecture_decisions": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[0-9]{4,}$"
+          }
+        },
+        "supersedes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^BRR-[A-Z]+-[0-9]{3,}$"
+          }
+        },
+        "superseded_by": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^BRR-[A-Z]+-[0-9]{3,}$"
+          }
+        },
+        "path": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "selection": {
+          "enum": [
+            "effective",
+            "pending_preview",
+            "withdrawn"
+          ]
+        },
+        "currently_effective": {
+          "type": "boolean"
+        },
+        "body": {
+          "type": "string"
+        }
       }
     }
   }
