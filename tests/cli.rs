@@ -257,7 +257,7 @@ fn populated_collections_and_historical_records_never_claim_complete_success() {
         ],
     );
     fs::remove_file(dir.path().join(".badr/adrs/0001-example.md")).unwrap();
-    let result = json(dir.path(), &["validate"], 3);
+    let result = json(dir.path(), &["validate"], 2);
     assert_eq!(result["validation_coverage"]["collection"], "passed");
     assert_eq!(result["validation_coverage"]["history"], "incomplete");
 }
@@ -448,7 +448,7 @@ fn merged_branch_history_cannot_hide_added_then_deleted_records() {
             "merge side",
         ],
     );
-    let result = json(dir.path(), &["validate"], 3);
+    let result = json(dir.path(), &["validate"], 2);
     assert_eq!(result["validation_coverage"]["history"], "incomplete");
 }
 
@@ -492,14 +492,14 @@ fn inspect_registered_brr_and_show_exact_body_without_writes() {
         &[
             "list", "--type", "brr", "--domain", "ordering", "--status", "proposed",
         ],
-        3,
+        2,
     );
     assert_eq!(result["validation_coverage"]["collection"], "passed");
     assert_eq!(result["validation_coverage"]["history"], "incomplete");
     assert_eq!(result["records"][0]["id"], "BRR-ORD-001");
     assert_eq!(result["records"][0]["selection"], "pending_preview");
     assert_eq!(result["records"][0]["currently_effective"], false);
-    let shown = json(dir.path(), &["show", "BRR-ORD-001"], 3);
+    let shown = json(dir.path(), &["show", "BRR-ORD-001"], 2);
     assert_eq!(
         shown["records"][0]["body"],
         brr("proposed", "")
@@ -508,11 +508,11 @@ fn inspect_registered_brr_and_show_exact_body_without_writes() {
             .unwrap()
     );
     assert_eq!(
-        json(dir.path(), &["list", "--effective"], 3)["records"],
+        json(dir.path(), &["list", "--effective"], 2)["records"],
         serde_json::json!([])
     );
     assert_eq!(
-        json(dir.path(), &["list", "--pending-preview"], 3)["records"]
+        json(dir.path(), &["list", "--pending-preview"], 2)["records"]
             .as_array()
             .unwrap()
             .len(),
@@ -522,7 +522,7 @@ fn inspect_registered_brr_and_show_exact_body_without_writes() {
     assert!(String::from_utf8_lossy(&human.stdout).contains("pending_preview"));
     assert_eq!(fs::read(dir.path().join(BRR_PATH)).unwrap(), before);
     assert_eq!(
-        json(dir.path(), &["validate"], 3)["partial_write"],
+        json(dir.path(), &["validate"], 2)["partial_write"],
         serde_json::json!({"completed":[],"not_completed":[]})
     );
 }
@@ -554,7 +554,7 @@ fn brr_structure_outlines_and_source_lines_are_checked() {
         "    Scenario Outline: Cancel <time>",
     ) + "      Examples:\n        | time |\n        | early |\n";
     fs::write(dir.path().join(BRR_PATH), outline.replace('\n', "\r\n")).unwrap();
-    let result = json(dir.path(), &["show", "BRR-ORD-001"], 3);
+    let result = json(dir.path(), &["show", "BRR-ORD-001"], 2);
     assert_eq!(result["validation_coverage"]["collection"], "passed");
     assert!(
         result["records"][0]["body"]
@@ -642,14 +642,14 @@ fn brr_metadata_and_lifecycle_validation_reject_malformed_values() {
             _ => "",
         };
         fs::write(dir.path().join(BRR_PATH), brr(status, &format!("description: A rule\nrelated_architecture_decisions: ['0001']\nsupersedes: [BRR-ORD-002]\nsuperseded_by: []\n{times}"))).unwrap();
-        let result = json(dir.path(), &["list", "--status", status], 3);
+        let result = json(dir.path(), &["list", "--status", status], 2);
         assert_eq!(result["validation_coverage"]["collection"], "passed");
         assert_eq!(
             result["records"][0]["currently_effective"],
             status == "effective"
         );
         assert_eq!(
-            json(dir.path(), &["list", "--effective"], 3)["records"]
+            json(dir.path(), &["list", "--effective"], 2)["records"]
                 .as_array()
                 .unwrap()
                 .len(),
@@ -830,7 +830,7 @@ fn body_diagnostics_and_json_order_are_deterministic() {
     }
     fs::write(&path, brr("proposed", "").replace("      Given an unfulfilled order", "      Given an unfulfilled order\n      \"\"\"\n      Feature: text inside an argument\n      Rule: text inside an argument\n      # language: nonexistent\n      \"\"\"")).unwrap();
     assert_eq!(
-        json(dir.path(), &["validate"], 3)["validation_coverage"]["collection"],
+        json(dir.path(), &["validate"], 2)["validation_coverage"]["collection"],
         "passed"
     );
     fs::write(
@@ -850,7 +850,7 @@ fn body_diagnostics_and_json_order_are_deterministic() {
     )
     .unwrap();
     assert_eq!(
-        json(dir.path(), &["validate"], 3)["validation_coverage"]["collection"],
+        json(dir.path(), &["validate"], 2)["validation_coverage"]["collection"],
         "passed"
     );
 }
@@ -899,13 +899,13 @@ fn applicability_times_require_quoted_yaml_scalars() {
     ] {
         fs::write(&path, brr("effective", metadata)).unwrap();
         assert_eq!(
-            json(dir.path(), &["validate"], 3)["validation_coverage"]["collection"],
+            json(dir.path(), &["validate"], 2)["validation_coverage"]["collection"],
             "passed"
         );
     }
     fs::write(&path, brr("effective", "effective_from: '2020-01-01T00:00:00Z'\n").replace("id: BRR-ORD-001\ndomain: ordering\nstatus: effective\nowners: [Product, Engineering]\neffective_from: '2020-01-01T00:00:00Z'\n", "{id: BRR-ORD-001, domain: ordering, status: effective, owners: [Product], effective_from: '2020-01-01T00:00:00Z'}\n")).unwrap();
     assert_eq!(
-        json(dir.path(), &["validate"], 3)["validation_coverage"]["collection"],
+        json(dir.path(), &["validate"], 2)["validation_coverage"]["collection"],
         "passed"
     );
 }
@@ -916,33 +916,33 @@ fn mixed_brr_and_adr_collections_keep_type_status_and_authority_filters() {
     fs::create_dir(dir.path().join(".badr/adrs")).unwrap();
     let path = dir.path().join(".badr/adrs/0001-storage.md");
     fs::write(&path, "---\nid: \"0001\"\nstatus: approved\ndate: \"2026-10-15\"\n---\n# Storage\n\n## Context and Problem Statement\nNeed storage.\n\n## Decision Drivers\nSimplicity.\n\n## Considered Options\nFiles or database.\n\n## Decision Outcome\nFiles because Git gives history.\n\n### Consequences\nReviewable changes.\n").unwrap();
-    let all = json(dir.path(), &["list"], 3);
+    let all = json(dir.path(), &["list"], 2);
     assert_eq!(all["records"].as_array().unwrap().len(), 2);
     assert_eq!(all["validation_coverage"]["collection"], "passed");
     for (kind, id) in [("brr", "BRR-ORD-001"), ("adr", "0001")] {
-        let selected = json(dir.path(), &["list", "--type", kind], 3);
+        let selected = json(dir.path(), &["list", "--type", kind], 2);
         assert_eq!(selected["records"].as_array().unwrap().len(), 1);
         assert_eq!(selected["records"][0]["id"], id);
-        assert_eq!(json(dir.path(), &["show", id], 3)["records"][0]["id"], id);
+        assert_eq!(json(dir.path(), &["show", id], 2)["records"][0]["id"], id);
     }
     assert_eq!(
-        json(dir.path(), &["list", "--status", "approved"], 3)["records"][0]["id"],
+        json(dir.path(), &["list", "--status", "approved"], 2)["records"][0]["id"],
         "0001"
     );
     assert_eq!(
-        json(dir.path(), &["list", "--domain", "ordering"], 3)["records"][0]["id"],
+        json(dir.path(), &["list", "--domain", "ordering"], 2)["records"][0]["id"],
         "BRR-ORD-001"
     );
     assert_eq!(
-        json(dir.path(), &["list", "--pending-preview"], 3)["records"][0]["id"],
+        json(dir.path(), &["list", "--pending-preview"], 2)["records"][0]["id"],
         "BRR-ORD-001"
     );
     assert_eq!(
-        json(dir.path(), &["list", "--directing"], 3)["records"][0]["id"],
+        json(dir.path(), &["list", "--directing"], 2)["records"][0]["id"],
         "0001"
     );
     assert_eq!(
-        json(dir.path(), &["list", "--effective"], 3)["records"],
+        json(dir.path(), &["list", "--effective"], 2)["records"],
         serde_json::json!([])
     );
     fs::write(&path, "malformed ADR").unwrap();

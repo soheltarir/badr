@@ -2,9 +2,9 @@
 
 BADR is a standalone Rust command-line tool for managing Business Rule Records
 (BRRs) and Architecture Decision Records (ADRs). It supports safe initialization
-and read-only BRR/ADR inspection and structural validation. Record authoring
-and evidence/historical authorization checks are planned in
-subsequent issues.
+and read-only BRR/ADR inspection, structural validation, and evidence/frozen-body
+verification. Record authoring and lifecycle commands are planned in subsequent
+issues.
 
 Build from source with Rust 1.85 or newer and Cargo:
 
@@ -34,9 +34,11 @@ keyword data used by structural checks.
 ./target/release/badr --repo /path/to/repository show BRR-ORD-001 --json
 ```
 
-Populated BRR/ADR collections report structural results and exit 3 until evidence
-and historical authorization checks are available. Structural validity never
-establishes business-rule adequacy, human authorization, or code conformance.
+Validation replays versioned operation evidence and checks exact SHA-256 body
+revisions and retained Git history. See the [evidence contract](docs/evidence.md).
+Populated collections require consistent evidence; missing evidence is an
+integrity error. Unavailable history is explicitly incomplete. Passing checks
+never establishes authenticated approval, semantic adequacy, or code conformance.
 
 Development checks:
 

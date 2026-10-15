@@ -19,15 +19,15 @@ pub(crate) struct Metadata {
     #[serde(skip_serializing_if = "Option::is_none")]
     description: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    effective_from: Option<String>,
+    pub(super) effective_from: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    effective_until: Option<String>,
+    pub(super) effective_until: Option<String>,
     #[serde(default)]
-    related_architecture_decisions: Vec<String>,
+    pub(super) related_architecture_decisions: Vec<String>,
     #[serde(default)]
-    supersedes: Vec<String>,
+    pub(super) supersedes: Vec<String>,
     #[serde(default)]
-    superseded_by: Vec<String>,
+    pub(super) superseded_by: Vec<String>,
 }
 #[derive(Serialize)]
 pub(crate) struct Record {
@@ -236,7 +236,7 @@ struct Dialect {
     #[serde(rename = "scenarioOutline")]
     scenario_outline: Vec<String>,
 }
-fn parse(text: &str, path: &str) -> Result<Record, String> {
+pub(super) fn parse(text: &str, path: &str) -> Result<Record, String> {
     let (header, body, offset) = frontmatter(text)?;
     let metadata = metadata(header)
         .map_err(|e| format!("Frontmatter (input line 1 is stored-file line 2): {e}"))?;
