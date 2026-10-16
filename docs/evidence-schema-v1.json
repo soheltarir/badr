@@ -32,7 +32,8 @@
         "retire",
         "supersede",
         "link",
-        "unlink"
+        "unlink",
+        "domain_add"
       ]
     },
     "at": {
@@ -77,10 +78,34 @@
     },
     "changes": {
       "type": "array",
-      "minItems": 1,
       "items": {
         "$ref": "#/$defs/change"
       }
+    },
+    "domain": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "slug",
+            "prefix"
+          ],
+          "properties": {
+            "slug": {
+              "type": "string",
+              "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
+            },
+            "prefix": {
+              "type": "string",
+              "pattern": "^[A-Z]+$"
+            }
+          }
+        }
+      ]
     }
   },
   "$defs": {
@@ -211,5 +236,56 @@
         }
       }
     }
-  }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "operation": {
+            "const": "domain_add"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "domain",
+          "actor",
+          "rationale",
+          "confirmed"
+        ],
+        "properties": {
+          "changes": {
+            "maxItems": 0
+          },
+          "confirmed": {
+            "const": true
+          },
+          "actor": {
+            "type": "string",
+            "minLength": 1
+          },
+          "rationale": {
+            "type": "string",
+            "minLength": 1
+          },
+          "replacement": {
+            "type": "null"
+          },
+          "domain": {
+            "type": "object"
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "changes": {
+            "minItems": 1
+          },
+          "domain": {
+            "type": "null"
+          }
+        }
+      }
+    }
+  ]
 }

@@ -15,7 +15,8 @@
     "baseline_commit",
     "validation_coverage",
     "pending_commit_durability",
-    "partial_write"
+    "partial_write",
+    "proposed_audit_commit_message"
   ],
   "properties": {
     "schema_version": {
@@ -30,7 +31,8 @@
         "list",
         "validate",
         "show",
-        "arguments"
+        "arguments",
+        "domain_add"
       ]
     },
     "result": {
@@ -177,6 +179,12 @@
           }
         }
       }
+    },
+    "proposed_audit_commit_message": {
+      "type": [
+        "string",
+        "null"
+      ]
     }
   },
   "$defs": {

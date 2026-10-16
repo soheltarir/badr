@@ -30,6 +30,11 @@ enum Operation {
         #[arg(long)]
         baseline: String,
     },
+    /// Register BRR domains through explicit governed writes.
+    Domain {
+        #[command(subcommand)]
+        command: repository::domain::Command,
+    },
     /// Inspect managed records with explicit applicability selection.
     List {
         #[command(flatten)]
@@ -66,6 +71,7 @@ fn main() -> ExitCode {
         }
     };
     let report = match cli.command {
+        Operation::Domain { command } => repository::domain::run(&cli.repo, command),
         Operation::Init { baseline } => repository::init(&cli.repo, &baseline),
         Operation::List { filter } => repository::select(&cli.repo, "list", &filter, None),
         Operation::Show { id } => {
@@ -93,6 +99,17 @@ fn emit(report: Report, json: bool) -> ExitCode {
             );
         }
         let mut output = format!("{}: {}\n", report.operation, report.result);
+        if report.operation == "domain_add" {
+            output.push_str(&format!(
+                "Completed writes: {:?}\nNot completed: {:?}\nPending audit commit: {:?}\n",
+                report.partial_write.completed,
+                report.partial_write.not_completed,
+                report.pending_commit_durability
+            ));
+            if let Some(message) = &report.proposed_audit_commit_message {
+                output.push_str(&format!("Proposed audit commit message:\n{message}\n"));
+            }
+        }
         for record in &report.records {
             match record {
                 repository::Record::Brr(record) => {

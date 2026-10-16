@@ -1,11 +1,13 @@
 #[path = "brr.rs"]
 mod brr;
+#[path = "domain.rs"]
+pub(crate) mod domain;
 #[path = "evidence.rs"]
 mod evidence;
 
 use serde::{Deserialize, Serialize};
 use std::{
-    fs::{self, OpenOptions},
+    fs,
     io::{self, Write},
     os::unix::ffi::OsStringExt,
     path::{Path, PathBuf},
@@ -30,8 +32,8 @@ pub(crate) struct Coverage {
 }
 #[derive(Serialize)]
 pub(crate) struct Writes {
-    completed: Vec<String>,
-    not_completed: Vec<String>,
+    pub(crate) completed: Vec<String>,
+    pub(crate) not_completed: Vec<String>,
 }
 #[derive(Serialize)]
 pub(crate) struct Report {
@@ -45,8 +47,9 @@ pub(crate) struct Report {
     pub diagnostics: Vec<Diagnostic>,
     baseline_commit: Option<String>,
     pub(crate) validation_coverage: Coverage,
-    pending_commit_durability: Option<bool>,
-    partial_write: Writes,
+    pub(crate) pending_commit_durability: Option<bool>,
+    pub proposed_audit_commit_message: Option<String>,
+    pub(crate) partial_write: Writes,
 }
 #[derive(Serialize)]
 #[serde(untagged)]
@@ -87,6 +90,7 @@ impl Report {
                 history: "not_checked",
             },
             pending_commit_durability: None,
+            proposed_audit_commit_message: None,
             partial_write: Writes {
                 completed: vec![],
                 not_completed: vec![],
@@ -273,13 +277,6 @@ fn baseline(root: &Path, branch: &str, report: &mut Report) {
         Err(e) => report.io(e),
     }
 }
-struct Lock(PathBuf);
-impl Drop for Lock {
-    fn drop(&mut self) {
-        let _ = fs::remove_file(&self.0);
-    }
-}
-
 pub(crate) fn init(target: &Path, branch: &str) -> Report {
     let mut report = Report::new("init");
     let Some(root) = root(target, &mut report) else {
@@ -288,13 +285,8 @@ pub(crate) fn init(target: &Path, branch: &str) -> Report {
     if let Err(e) = check_branch(&root, branch) {
         return Report::invalid("init", "invalid_baseline", e);
     }
-    let lock_path = root.join(".badr.lock");
-    let _lock = match OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(&lock_path)
-    {
-        Ok(_) => Lock(lock_path),
+    let _lock = match domain::WriterLock::acquire(&root, "init") {
+        Ok(lock) => lock,
         Err(e) => {
             report.fail(
                 4,
@@ -382,6 +374,9 @@ pub(crate) fn inspect(target: &Path, operation: &str) -> Report {
 }
 
 fn inspect_collection(root: &Path, report: &mut Report) {
+    inspect_collection_at(root, root, report);
+}
+fn inspect_collection_at(root: &Path, history_root: &Path, report: &mut Report) {
     fn walk(
         root: &Path,
         path: &Path,
@@ -527,7 +522,7 @@ fn inspect_collection(root: &Path, report: &mut Report) {
     report
         .records
         .sort_by(|a, b| a.id().cmp(b.id()).then(a.path().cmp(b.path())));
-    evidence::inspect(root, report);
+    evidence::inspect(root, history_root, report);
     if report.operation != "show" {
         for record in &mut report.records {
             if let Record::Adr(record) = record {

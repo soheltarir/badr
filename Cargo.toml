@@ -18,3 +18,4 @@ saphyr-parser = "0.2.2"
 pulldown-cmark = { version = "0.13", default-features = false }
 yaml-rust2 = { version = "0.11", default-features = false }
 sha2 = "0.10"
+rustix = { version = "1.1", features = ["fs"] }

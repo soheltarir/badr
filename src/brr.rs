@@ -41,15 +41,15 @@ pub(crate) struct Record {
     pub currently_effective: bool,
     pub body: String,
 }
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
-struct Registry {
-    version: u8,
-    domains: BTreeMap<String, String>,
-    rules: BTreeMap<String, String>,
+pub(super) struct Registry {
+    pub(super) version: u8,
+    pub(super) domains: BTreeMap<String, String>,
+    pub(super) rules: BTreeMap<String, String>,
 }
 
-fn slug(value: &str) -> bool {
+pub(super) fn slug(value: &str) -> bool {
     !value.is_empty()
         && value.split('-').all(|part| {
             !part.is_empty()
@@ -58,7 +58,7 @@ fn slug(value: &str) -> bool {
                     .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit())
         })
 }
-fn prefix(value: &str) -> bool {
+pub(super) fn prefix(value: &str) -> bool {
     !value.is_empty() && value.bytes().all(|c| c.is_ascii_uppercase())
 }
 fn id(value: &str) -> Option<(&str, &str)> {
@@ -415,6 +415,23 @@ fn read(root: &Path, path: &str, report: &mut Report) -> Option<String> {
     }
 }
 
+pub(super) fn parse_registry(text: &str) -> Result<Registry, String> {
+    let value = yaml(text)?;
+    let registry: Registry = yaml_serde::from_value(value).map_err(|e| e.to_string())?;
+    if registry.version != 1 {
+        return Err("Unsupported BRR registry version".into());
+    }
+    let mut prefixes = BTreeSet::new();
+    for (domain, value) in &registry.domains {
+        if !slug(domain) || !prefix(value) || !prefixes.insert(value) {
+            return Err(format!(
+                "Invalid/duplicate domain or uppercase prefix: {domain}: {value}"
+            ));
+        }
+    }
+    Ok(registry)
+}
+
 pub(super) fn inspect(root: &Path, files: &BTreeSet<String>, report: &mut Report) {
     const REGISTRY: &str = ".badr/brrs/registry.yaml";
     let features: Vec<_> = files
@@ -422,14 +439,7 @@ pub(super) fn inspect(root: &Path, files: &BTreeSet<String>, report: &mut Report
         .filter(|p| p.starts_with(".badr/brrs/") && p.ends_with(".feature"))
         .collect();
     let registry = if files.contains(REGISTRY) {
-        let result = read(root, REGISTRY, report).map(|text| {
-            let value = yaml(&text)?;
-            let registry: Registry = yaml_serde::from_value(value).map_err(|e| e.to_string())?;
-            if registry.version != 1 {
-                return Err("Unsupported BRR registry version".into());
-            }
-            Ok(registry)
-        });
+        let result = read(root, REGISTRY, report).map(|text| parse_registry(&text));
         match result {
             Some(Ok(r)) => Some(r),
             Some(Err(e)) => {

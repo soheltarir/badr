@@ -2,8 +2,8 @@
 
 BADR is a standalone Rust command-line tool for managing Business Rule Records
 (BRRs) and Architecture Decision Records (ADRs). It supports safe initialization
-and read-only BRR/ADR inspection, structural validation, and evidence/frozen-body
-verification. Record authoring and lifecycle commands are planned in subsequent
+and governed domain registration, read-only BRR/ADR inspection, structural
+validation, and evidence/frozen-body verification. Record authoring and lifecycle commands are planned in subsequent
 issues.
 
 Build from source with Rust 1.85 or newer and Cargo:
@@ -11,6 +11,8 @@ Build from source with Rust 1.85 or newer and Cargo:
 ```sh
 cargo build --locked --release
 ./target/release/badr --repo /path/to/repository init --baseline main
+./target/release/badr --repo /path/to/repository domain add ordering --prefix ORD \
+  --confirm --actor "Human" --rationale "Establish ordering vocabulary"
 ./target/release/badr --repo /path/to/repository list --json
 ./target/release/badr --repo /path/to/repository validate
 ```

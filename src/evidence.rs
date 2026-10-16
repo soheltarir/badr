@@ -24,6 +24,13 @@ struct Event {
     confirmed: Option<bool>,
     replacement: Option<Replacement>,
     changes: Vec<Change>,
+    domain: Option<Domain>,
+}
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Domain {
+    slug: String,
+    prefix: String,
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -225,12 +232,13 @@ fn replay(events: &[Event], available: [bool; 2], report: &mut Report) -> BTreeM
     let mut states: BTreeMap<String, State> = BTreeMap::new();
     let mut ids = BTreeSet::new();
     let mut previous = None;
+    let mut domains = BTreeMap::new();
     for (line, event) in events.iter().enumerate() {
         let result = (|| -> Result<(), String> {
             if event.version != 1
                 || event.event_id.trim().is_empty()
                 || !ids.insert(&event.event_id)
-                || event.changes.is_empty()
+                || (event.changes.is_empty() && event.operation != "domain_add")
             {
                 return Err(
                     "Unsupported version, duplicate/empty event identity, or empty changes".into(),
@@ -259,6 +267,26 @@ fn replay(events: &[Event], available: [bool; 2], report: &mut Report) -> BTreeM
                 return Err(
                     "Governed changes require actor, rationale, and explicit confirmation".into(),
                 );
+            }
+            if event.operation == "domain_add" {
+                let domain = event
+                    .domain
+                    .as_ref()
+                    .ok_or("Domain registration requires slug/prefix")?;
+                if !event.changes.is_empty()
+                    || event.replacement.is_some()
+                    || !super::brr::slug(&domain.slug)
+                    || !super::brr::prefix(&domain.prefix)
+                    || domains.contains_key(&domain.slug)
+                    || domains.values().any(|p| *p == &domain.prefix)
+                {
+                    return Err("Invalid or repeated domain/prefix registration".into());
+                }
+                domains.insert(&domain.slug, &domain.prefix);
+                return Ok(());
+            }
+            if event.domain.is_some() {
+                return Err("Only domain_add may contain domain registration".into());
             }
             if event.replacement.is_none() && event.changes.len() != 1 {
                 return Err(
@@ -761,6 +789,8 @@ fn retained(
         return Err(io::Error::other(String::from_utf8_lossy(&out.stderr).into_owned()).into());
     }
     let mut ledger = String::new();
+    let mut domains = BTreeMap::new();
+    let mut glossaries = BTreeSet::new();
     let mut records = Vec::new();
     let mut available = [false; 2];
     for entry in out.stdout.split(|b| *b == 0).filter(|s| !s.is_empty()) {
@@ -771,7 +801,18 @@ fn retained(
         available[1] |= path.starts_with(".badr/brrs/");
         let record = (path.starts_with(".badr/adrs/") && path.ends_with(".md"))
             || (path.starts_with(".badr/brrs/") && path.ends_with(".feature"));
-        if path != LEDGER && path != ".badr/config.yaml" && !record {
+        if path.starts_with(".badr/brrs/domains/")
+            && path.ends_with("/glossary.md")
+            && fields.len() == 3
+            && matches!(fields[0], "100644" | "100755")
+        {
+            glossaries.insert(path.to_owned());
+        }
+        if path != LEDGER
+            && path != ".badr/config.yaml"
+            && path != ".badr/brrs/registry.yaml"
+            && !record
+        {
             continue;
         }
         if fields.len() != 3 || !matches!(fields[0], "100644" | "100755") || fields[1] != "blob" {
@@ -807,6 +848,18 @@ fn retained(
         };
         if path == LEDGER {
             ledger = text;
+        } else if path == ".badr/brrs/registry.yaml" {
+            match super::brr::parse_registry(&text) {
+                Ok(registry) => domains = registry.domains,
+                Err(error) => issue(
+                    report,
+                    "invalid_historical_registry",
+                    format!("{commit}: {error}"),
+                    path,
+                    None,
+                    None,
+                ),
+            }
         } else if path == ".badr/config.yaml" {
             match yaml_serde::from_str::<super::Config>(&text) {
                 Ok(config)
@@ -849,6 +902,20 @@ fn retained(
             }
         }
     }
+    for slug in domains.keys() {
+        let glossary = format!(".badr/brrs/domains/{slug}/glossary.md");
+        if !glossaries.contains(&glossary) {
+            issue(
+                report,
+                "missing_historical_glossary",
+                format!("{commit}: registered domain requires its glossary"),
+                &glossary,
+                None,
+                None,
+            );
+        }
+    }
+    check_registered_domains(&events(&ledger, report), &domains, report);
     Ok((ledger, records, available))
 }
 fn baseline_contains(root: &Path, commit: &str, id: &str) -> Result<bool, HistoryError> {
@@ -1078,7 +1145,7 @@ fn history(root: &Path, text: &str, evidence: &[Event], report: &mut Report) {
         Err(HistoryError::Operational(error)) => report.io(error),
     }
 }
-pub(super) fn inspect(root: &Path, report: &mut Report) {
+pub(super) fn inspect(root: &Path, history_root: &Path, report: &mut Report) {
     let start = report.diagnostics.len();
     report.validation_coverage.evidence = "incomplete";
     let text = match super::safe_entry(&root.join(LEDGER)) {
@@ -1156,5 +1223,111 @@ pub(super) fn inspect(root: &Path, report: &mut Report) {
         } else {
             "incomplete"
         };
-    history(root, &text, &events, report);
+    let before_domains = report.diagnostics.len();
+    if report.validation_coverage.collection == "passed" {
+        domain_ownership(root, history_root, &events, report);
+    }
+    if report.diagnostics.len() != before_domains {
+        report.validation_coverage.evidence = "incomplete";
+    }
+    history(history_root, &text, &events, report);
+}
+
+// Retain ownership from every locally referenced registry, including deleted domains.
+fn domain_ownership(root: &Path, history_root: &Path, events: &[Event], report: &mut Report) {
+    const REGISTRY: &str = ".badr/brrs/registry.yaml";
+    let result = (|| -> Result<(), HistoryError> {
+        let current = match fs::read_to_string(root.join(REGISTRY)) {
+            Ok(text) => super::brr::parse_registry(&text)?.domains,
+            Err(e) if e.kind() == io::ErrorKind::NotFound => BTreeMap::new(),
+            Err(e) => return Err(e.into()),
+        };
+        let has_baseline = report.baseline_commit.is_some();
+        let mut owners = BTreeMap::new();
+        let mut slugs = BTreeMap::new();
+        let mut reserve = |slug: &str, prefix: &str| {
+            if owners.get(prefix).is_some_and(|old| old != slug)
+                || slugs.get(slug).is_some_and(|old| old != prefix)
+            {
+                issue(
+                    report,
+                    "domain_identity_changed",
+                    "Reserved domain/prefix ownership cannot change",
+                    REGISTRY,
+                    None,
+                    None,
+                );
+            }
+            owners.insert(prefix.to_owned(), slug.to_owned());
+            slugs.insert(slug.to_owned(), prefix.to_owned());
+        };
+        for event in events {
+            if let Some(domain) = &event.domain {
+                reserve(&domain.slug, &domain.prefix);
+            }
+        }
+        let revisions = if has_baseline {
+            require_revision(history_root, "HEAD^{commit}")?;
+            git_text(
+                history_root,
+                &[
+                    "rev-list",
+                    "--full-history",
+                    "--all",
+                    "HEAD",
+                    "--",
+                    REGISTRY,
+                ],
+            )?
+        } else {
+            String::new()
+        };
+        for commit in revisions.lines() {
+            let tree = git_text(history_root, &["ls-tree", commit, "--", REGISTRY])?;
+            if tree.is_empty() {
+                continue;
+            }
+            if !tree.starts_with("100644 blob ") && !tree.starts_with("100755 blob ") {
+                return Err("Retained registry is not a regular file".into());
+            }
+            let text = git_text(history_root, &["show", &format!("{commit}:{REGISTRY}")])?;
+            let registry = super::brr::parse_registry(&text)?;
+            for (slug, prefix) in registry.domains {
+                reserve(&slug, &prefix);
+            }
+        }
+        for (slug, prefix) in &current {
+            reserve(slug, prefix);
+        }
+        check_registered_domains(events, &current, report);
+        Ok(())
+    })();
+    match result {
+        Ok(()) => {}
+        Err(HistoryError::Unavailable(message)) => {
+            report.fail(3, "domain_history_incomplete", message, None)
+        }
+        Err(HistoryError::Operational(error)) => report.io(error),
+    }
+}
+
+fn check_registered_domains(
+    events: &[Event],
+    domains: &BTreeMap<String, String>,
+    report: &mut Report,
+) {
+    for event in events {
+        if let Some(domain) = &event.domain {
+            if domains.get(&domain.slug) != Some(&domain.prefix) {
+                issue(
+                    report,
+                    "removed_domain",
+                    "An evidenced domain registration must remain present",
+                    ".badr/brrs/registry.yaml",
+                    None,
+                    None,
+                );
+            }
+        }
+    }
 }

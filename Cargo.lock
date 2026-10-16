@@ -72,6 +72,7 @@ dependencies = [
  "clap",
  "gherkin",
  "pulldown-cmark",
+ "rustix",
  "saphyr-parser",
  "serde",
  "serde_json",
