@@ -10,17 +10,17 @@ use yaml_serde::Value;
 pub(crate) struct Metadata {
     pub id: String,
     pub status: String,
-    date: String,
+    pub(crate) date: String,
     #[serde(default, rename = "decision-makers")]
     decision_makers: Vec<String>,
     #[serde(default)]
-    supersedes: Vec<String>,
+    pub(crate) supersedes: Vec<String>,
     #[serde(default)]
-    superseded_by: Vec<String>,
+    pub(crate) superseded_by: Vec<String>,
     #[serde(default)]
-    related_adrs: Vec<String>,
+    pub(crate) related_adrs: Vec<String>,
     #[serde(default)]
-    related_business_rules: Vec<String>,
+    pub(crate) related_business_rules: Vec<String>,
 }
 #[derive(Serialize)]
 pub(crate) struct Record {
@@ -33,6 +33,8 @@ pub(crate) struct Record {
     pub body_start_line: usize,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub decision_body: Option<String>,
+    #[serde(skip)]
+    pub lifecycle_notes: String,
 }
 
 struct Invalid {
@@ -460,6 +462,7 @@ fn parse(text: &str, path: &str) -> Result<Record, Invalid> {
         path: path.into(),
         body_start_line: start_line,
         decision_body: Some(decision.into()),
+        lifecycle_notes: text[body_start + decision.len()..].into(),
     })
 }
 
@@ -575,9 +578,9 @@ pub(crate) fn inspect(root: &Path, report: &mut Report) -> bool {
     if report.diagnostics.len() != diagnostic_start {
         report.validation_coverage.collection = "incomplete";
     }
-    if populated {
-        report.validation_coverage.evidence = "incomplete";
-        report.fail(3, "evidence_incomplete", "ADR authorization, body digests, relationship targets and append-only notes require evidence/history checks not implemented here; semantic adequacy and existing-code conformance are not assessed.".into(), None);
-    }
     populated
+}
+
+pub(crate) fn retained(text: &str, path: &str) -> Result<Record, String> {
+    parse(text, path).map_err(|error| error.message)
 }

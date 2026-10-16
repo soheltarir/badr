@@ -1,9 +1,10 @@
 # BADR CLI contract, version 1
 
 BADR implements initialization and read-only BRR/ADR inspection and structural
-validation. Record authoring, evidence validation, and historical authorization
-checks remain unavailable. Populated record collections expose
-structural results with explicit incomplete coverage, never complete success.
+validation, operation-evidence replay, exact frozen-body checks, and retained
+Git revision checks. Record authoring and lifecycle commands remain unavailable.
+See the [versioned evidence contract](evidence.md) for the event schema and
+coverage limits.
 
 ```sh
 badr --repo /path/to/existing/repository init --baseline trunk
@@ -32,11 +33,11 @@ This exception enables no governed record writes.
 inspection logic. All operations inspect the whole managed collection before
 selection, so a filter cannot hide invalid records. Absent record directories
 and evidence, empty record directories, empty registry mappings, and an empty
-evidence file are valid. Nonempty evidence files return incomplete coverage.
+evidence file are valid. Populated collections require consistent operation
+evidence, including allocation and active approval receipts.
 Unrelated files outside `.badr/` are not collected. Baselines resolve once to
-an immutable local commit ID; shallow Git history, missing baselines, and any
-historical managed file other than configuration prevent complete historical
-coverage. No snapshot is checked out and no history content is executed.
+an immutable local commit ID; shallow history, unavailable Git objects, or
+missing baselines prevent complete historical coverage. No snapshot is checked out and no history content is executed.
 
 BRR frontmatter and registry YAML reject duplicate/unknown keys, unsafe tags,
 malformed types, and invalid UTF-8. Only the exact remaining body is passed to
@@ -65,11 +66,12 @@ prints the selection and exact body; JSON records include all validated
 metadata and the exact body. An absent or invalid ID produces `record_not_found`. Invalid records may be omitted;
 read the coverage and diagnostics before using a partial inspection result.
 
-A populated BRR collection always reports evidence/history as `incomplete`
-(exit 3 unless another error takes precedence), including when no evidence file
-exists. Structural success never proves business-rule adequacy, scenario
-sufficiency, frozen-body integrity, historical prefix ownership, human approval,
-or implementation conformance. Relationship target/graph checks are deferred.
+Populated collections can pass evidence/history validation when their retained
+events, frozen revisions, relationships, and available historical snapshots are
+consistent. Missing evidence returns exit 2. Absent supporting collections leave
+references explicitly unverified (exit 3); missing targets in available
+collections are errors. Passing checks never proves semantic adequacy,
+authenticated human approval, or implementation conformance.
 
 ## ADR inspection
 
@@ -117,8 +119,9 @@ fences, indented code, and nested blockquotes/lists.
 An optional `## Lifecycle notes` must be the final section, containing one or
 more `### YYYY-MM-DD` headings (optionally followed by a title) with nonempty
 note text. It cannot precede later decision sections. These are structural
-checks: actual append-only history and the adequacy of lifecycle declarations
-remain unverified. Headings alone cannot prove an authorized transition.
+checks. Evidence validation additionally checks retained digests and append-only
+notes against available revisions. Headings alone cannot prove human authorization
+or semantic adequacy.
 
 ## Output and exits
 
@@ -170,9 +173,10 @@ The same repository state produces the same JSON bytes.
 - `baseline_commit`: resolved immutable commit string, or null if unavailable.
 - `validation_coverage`: `configuration`, `collection`, `evidence`, `history`,
   each `passed`, `incomplete`, or `not_checked`. Collection `passed` means
-  supported structural checks passed; unsupported evidence files prevent
-  complete collection coverage. Evidence/history `passed` covers only empty
-  record/evidence collections and histories containing configuration alone.
+  structural checks passed. Evidence `passed` means local replay, current
+  revisions, and references were checked; history `passed` means retained
+  snapshots/append-only/reset checks completed against available trusted local
+  history. Neither status authenticates an actor or judges semantic adequacy.
 - `pending_commit_durability`: true when `.badr/` has staged, unstaged,
   untracked, or ignored changes; false when clean; null when undetermined.
   A true result requires the caller to review and commit configuration;

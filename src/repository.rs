@@ -1,5 +1,7 @@
 #[path = "brr.rs"]
 mod brr;
+#[path = "evidence.rs"]
+mod evidence;
 
 use serde::{Deserialize, Serialize};
 use std::{
@@ -455,7 +457,7 @@ fn inspect_collection(root: &Path, report: &mut Report) {
                     walk(root, &path, report, files)?;
                 }
             } else if meta.is_file() {
-                if relative == Path::new(".badr/evidence.jsonl") && meta.len() == 0 {
+                if relative == Path::new(".badr/evidence.jsonl") {
                     continue;
                 }
                 if relative.starts_with(".badr/brrs") {
@@ -472,10 +474,9 @@ fn inspect_collection(root: &Path, report: &mut Report) {
                     );
                 } else {
                     report.fail(
-                        3,
-                        "checks_not_implemented",
-                        "Evidence validation is not implemented; no complete result is available"
-                            .into(),
+                        2,
+                        "unexpected_path",
+                        "Unexpected file in managed storage".into(),
                         Some(relative),
                     );
                 }
@@ -522,10 +523,11 @@ fn inspect_collection(root: &Path, report: &mut Report) {
             );
         }
     }
-    let has_adrs = crate::adr::inspect(root, report);
+    crate::adr::inspect(root, report);
     report
         .records
         .sort_by(|a, b| a.id().cmp(b.id()).then(a.path().cmp(b.path())));
+    evidence::inspect(root, report);
     if report.operation != "show" {
         for record in &mut report.records {
             if let Record::Adr(record) = record {
@@ -533,53 +535,8 @@ fn inspect_collection(root: &Path, report: &mut Report) {
             }
         }
     }
-    let has_brrs = files.iter().any(|path| path.ends_with(".feature"));
-    if has_brrs {
-        report.fail(3, "authorization_checks_incomplete", "BRR structural checks do not establish business-rule adequacy, approval authorization, frozen bodies, historical prefix ownership, or implementation conformance; evidence and historical authorization checks are deferred.".into(), None);
-    }
-    report.validation_coverage.history = "incomplete";
-    let Some(commit) = report.baseline_commit.clone() else {
-        return;
-    };
-    let checks = (|| -> io::Result<bool> {
-        let shallow = git(root, &["rev-parse", "--is-shallow-repository"])?;
-        if !shallow.status.success() {
-            return Err(io::Error::other(
-                String::from_utf8_lossy(&shallow.stderr).into_owned(),
-            ));
-        }
-        if shallow.stdout != b"false\n" {
-            return Ok(false);
-        }
-        let history = git(
-            root,
-            &[
-                "log",
-                "--full-history",
-                "--format=",
-                "--name-only",
-                &commit,
-                "--",
-                ".badr",
-            ],
-        )?;
-        if !history.status.success() {
-            return Err(io::Error::other(
-                String::from_utf8_lossy(&history.stderr).into_owned(),
-            ));
-        }
-        Ok(String::from_utf8_lossy(&history.stdout)
-            .lines()
-            .all(|line| line.is_empty() || line == ".badr/config.yaml"))
-    })();
-    match checks {
-        Ok(true) if !has_brrs && !has_adrs => report.validation_coverage.history = "passed",
-        Ok(true) if has_adrs => report.fail(3, "history_incomplete", "ADR transition and lifecycle-note history checks are not implemented.".into(), None),
-        Ok(true) => {},
-        Ok(false) => report.fail(3, "history_incomplete", "Shallow history or historical managed records require checks not implemented in this milestone. Supply complete local history; historical record validation is deferred.".into(), None),
-        Err(e) => report.io(e),
-    }
 }
+
 fn durability(root: &Path, report: &mut Report) {
     match git(
         root,

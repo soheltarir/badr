@@ -82,7 +82,7 @@ fn lists_filters_and_shows_adrs_with_honest_coverage() {
     let result = report(
         dir.path(),
         &["list", "--type", "adr", "--status", "approved"],
-        3,
+        2,
     );
     assert_eq!(result["records"].as_array().unwrap().len(), 1);
     assert_eq!(result["records"][0]["id"], "0001");
@@ -90,7 +90,7 @@ fn lists_filters_and_shows_adrs_with_honest_coverage() {
     assert_eq!(result["validation_coverage"]["collection"], "passed");
     assert_eq!(result["validation_coverage"]["evidence"], "incomplete");
     assert_eq!(result["validation_coverage"]["history"], "incomplete");
-    let shown = report(dir.path(), &["show", "0001"], 3);
+    let shown = report(dir.path(), &["show", "0001"], 2);
     assert_eq!(shown["records"][0]["decision_body"], body());
     assert_eq!(shown["records"][0]["body_start_line"], 6);
     assert_eq!(shown["records"][0]["related_adrs"], json!([]));
@@ -108,7 +108,7 @@ fn exact_decision_bytes_exclude_frontmatter_and_only_final_lifecycle_notes() {
         "\r\n## Lifecycle notes\r\n\r\n### 2026-10-15 Approved\r\nReviewed and approved.\r\n",
     );
     write(dir.path(), "0001-storage.md", &text);
-    let shown = report(dir.path(), &["show", "0001"], 3);
+    let shown = report(dir.path(), &["show", "0001"], 2);
     assert_eq!(
         shown["records"][0]["decision_body"],
         format!("{decision}\r\n")
@@ -126,7 +126,7 @@ fn exact_decision_bytes_exclude_frontmatter_and_only_final_lifecycle_notes() {
         let first = run(dir.path(), &[args.clone(), vec!["--json"]].concat());
         let second = run(dir.path(), &[args.clone(), vec!["--json"]].concat());
         assert_eq!(first.stdout, second.stdout);
-        let result = report(dir.path(), &args, 3);
+        let result = report(dir.path(), &args, 2);
         assert_eq!(
             result["partial_write"],
             json!({"completed":[],"not_completed":[]})
@@ -275,7 +275,7 @@ fn lifecycle_notes_must_be_final_dated_and_nonempty() {
     let fenced = format!("{valid}\n~~~\n## Lifecycle notes\n### not-a-date\n~~~\n");
     write(dir.path(), "0001-storage.md", &fenced);
     assert_eq!(
-        report(dir.path(), &["show", "0001"], 3)["records"][0]["decision_body"],
+        report(dir.path(), &["show", "0001"], 2)["records"][0]["decision_body"],
         fenced
             .split_once("---\n")
             .unwrap()
@@ -353,7 +353,7 @@ fn supports_empty_collection_all_statuses_and_strict_filter_arguments() {
         write(dir.path(), &format!("{id}-example.md"), adr(&id, status));
     }
     assert_eq!(
-        report(dir.path(), &["list", "--directing"], 3)["records"]
+        report(dir.path(), &["list", "--directing"], 2)["records"]
             .as_array()
             .unwrap()
             .len(),
@@ -367,7 +367,7 @@ fn supports_empty_collection_all_statuses_and_strict_filter_arguments() {
         "superseded",
     ] {
         assert_eq!(
-            report(dir.path(), &["list", "--status", status], 3)["records"][0]["status"],
+            report(dir.path(), &["list", "--status", status], 2)["records"][0]["status"],
             status
         );
     }
@@ -395,7 +395,7 @@ fn consequences_belong_to_outcome_and_rationale_may_have_a_subheading() {
             "### Rationale\nFiles let us use Git for history.",
         ),
     );
-    report(dir.path(), &["validate"], 3);
+    report(dir.path(), &["validate"], 2);
 }
 
 #[test]
