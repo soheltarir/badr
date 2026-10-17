@@ -712,6 +712,7 @@ fn rejected_and_withdrawn_records_keep_their_numeric_reservations() {
             event["changes"][0]["from"] = (*from).into();
             event["changes"][0]["to"] = (*to).into();
             if *operation == "decide" {
+                event["reviewed"] = true.into();
                 event["changes"][0]["approval_ref"] = "fixture-decide".into();
             }
             text.push_str(&serde_json::to_string(&event).unwrap());
@@ -729,5 +730,448 @@ fn rejected_and_withdrawn_records_keep_their_numeric_reservations() {
             check(run(root, &["new", "adr", "next"]), 0)["affected_ids"],
             serde_json::json!(["0002"])
         );
+    }
+}
+
+const APPROVE: &[&str] = &[
+    "--confirm",
+    "--reviewed",
+    "--actor",
+    "Human",
+    "--rationale",
+    "Reviewed and resolved applicable gaps",
+];
+fn decide(root: &Path, id: &str, extra: &[&str]) -> Output {
+    let mut args = vec!["decide", id];
+    args.extend_from_slice(APPROVE);
+    args.extend_from_slice(extra);
+    run(root, &args)
+}
+#[test]
+fn approves_adr_with_exact_receipt_without_committing_or_changing_baseline() {
+    use sha2::{Digest, Sha256};
+    let dir = repo();
+    let root = dir.path();
+    let now: chrono::DateTime<chrono::Utc> = std::time::SystemTime::now().into();
+    let date = now.format("%Y-%m-%d");
+    let text = format!(
+        "---\nid: \"0001\"\nstatus: proposed\ndate: \"{date}\"\n---\n{}",
+        include_str!("../src/templates/adr.md")
+            .replace("{{title}}", "storage-choice")
+            .replace("TODO:", "Reviewed:")
+    )
+    .replace('\n', "\r\n");
+    let notes = "## Lifecycle notes\r\n\r\n### 2020-01-01\r\n\r\nPrepared for review.\r\n";
+    let input = root.join("input.md");
+    fs::write(&input, text + notes).unwrap();
+    check(
+        run(
+            root,
+            &[
+                "new",
+                "adr",
+                "storage-choice",
+                "--content",
+                input.to_str().unwrap(),
+            ],
+        ),
+        0,
+    );
+    let path = root.join(".badr/adrs/0001-storage-choice.md");
+    let body = check(run(root, &["show", "0001"]), 0)["records"][0]["decision_body"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let baseline = git(root, &["rev-parse", "trunk"]);
+    git(root, &["switch", "-c", "review"]);
+    let earlier = fs::read(root.join(".badr/evidence.jsonl")).unwrap();
+    let before = std::time::SystemTime::now();
+    let result = check(decide(root, "0001", &[]), 0);
+    assert_eq!(result["operation"], "decide");
+    assert_eq!(result["result"], "approved");
+    assert_eq!(result["baseline_commit"], baseline);
+    assert_eq!(result["pending_commit_durability"], true);
+    assert!(
+        result["proposed_audit_commit_message"]
+            .as_str()
+            .unwrap()
+            .contains("Approve 0001")
+    );
+    let shown = check(run(root, &["show", "0001"]), 0);
+    assert_eq!(shown["records"][0]["status"], "approved");
+    assert_eq!(shown["records"][0]["directs_new_work"], true);
+    assert_eq!(shown["records"][0]["decision_body"], body);
+    assert!(fs::read_to_string(&path).unwrap().ends_with(notes));
+    let ledger = fs::read(root.join(".badr/evidence.jsonl")).unwrap();
+    assert!(ledger.starts_with(&earlier));
+    let receipt: Value = serde_json::from_slice(
+        ledger
+            .split(|b| *b == b'\n')
+            .rfind(|s| !s.is_empty())
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(receipt["reviewed"], true);
+    assert_eq!(receipt["branch"], "review");
+    assert_eq!(receipt["baseline_commit"], baseline);
+    assert_eq!(receipt["changes"][0]["from"], "proposed");
+    assert_eq!(receipt["changes"][0]["approval_ref"], receipt["event_id"]);
+    assert_eq!(
+        receipt["changes"][0]["body_sha256"],
+        format!("{:x}", Sha256::digest(body.as_bytes()))
+    );
+    let at = chrono::DateTime::parse_from_rfc3339(receipt["at"].as_str().unwrap()).unwrap();
+    assert!(std::time::SystemTime::from(at) >= before);
+    assert_eq!(
+        shown["records"][0]["date"],
+        &receipt["at"].as_str().unwrap()[..10]
+    );
+    check(decide(root, "0001", &[]), 2);
+    assert_eq!(fs::read(root.join(".badr/evidence.jsonl")).unwrap(), ledger);
+    assert_eq!(git(root, &["rev-parse", "trunk"]), baseline);
+    assert_eq!(git(root, &["rev-list", "--count", "HEAD"]), "1");
+    check(run(root, &["validate"]), 0);
+    commit(root, "Approve decision and retain receipts");
+    assert_eq!(
+        check(run(root, &["validate"]), 0)["pending_commit_durability"],
+        false
+    );
+}
+
+#[test]
+fn approval_requires_resolved_review_and_preserves_inactive_brr_body() {
+    use sha2::{Digest, Sha256};
+    let dir = repo();
+    let root = dir.path();
+    check(run(root, ADD), 0);
+    check(
+        run(
+            root,
+            &[
+                "new",
+                "brr",
+                "cancellation",
+                "--domain",
+                "ordering",
+                "--owner",
+                "Product",
+            ],
+        ),
+        0,
+    );
+    check(decide(root, "BRR-ORD-001", &[]), 2);
+    check(
+        run(
+            root,
+            &[
+                "propose",
+                "BRR-ORD-001",
+                "--confirm",
+                "--actor",
+                "Human",
+                "--rationale",
+                "Ready",
+            ],
+        ),
+        0,
+    );
+    let path = root.join(".badr/brrs/domains/ordering/rules/BRR-ORD-001-cancellation.feature");
+    let before = fs::read(&path).unwrap();
+    let ledger = fs::read(root.join(".badr/evidence.jsonl")).unwrap();
+    // An explicit review declaration cannot resolve visible template gaps.
+    check(decide(root, "BRR-ORD-001", &[]), 2);
+    for args in [
+        vec!["--confirm", "--actor", "Human", "--rationale", "Reviewed"],
+        vec!["--reviewed", "--actor", "Human", "--rationale", "Reviewed"],
+        vec![
+            "--confirm",
+            "--reviewed",
+            "--actor",
+            " ",
+            "--rationale",
+            "Reviewed",
+        ],
+        vec![
+            "--confirm",
+            "--reviewed",
+            "--actor",
+            "Human",
+            "--rationale",
+            " ",
+        ],
+        vec!["--confirm", "--reviewed"],
+    ] {
+        let mut command = vec!["decide", "BRR-ORD-001"];
+        command.extend(args);
+        check(run(root, &command), 2);
+    }
+    assert_eq!(fs::read(&path).unwrap(), before);
+    assert_eq!(fs::read(root.join(".badr/evidence.jsonl")).unwrap(), ledger);
+    let text = String::from_utf8(before)
+        .unwrap()
+        .replace("TODO describe", "Describe")
+        .replace('\n', "\r\n");
+    fs::write(&path, text).unwrap();
+    let body = check(run(root, &["show", "BRR-ORD-001"]), 0)["records"][0]["body"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    check(decide(root, "BRR-ORD-001", &[]), 0);
+    let shown = check(run(root, &["show", "BRR-ORD-001"]), 0);
+    assert_eq!(shown["records"][0]["status"], "approved");
+    assert_eq!(shown["records"][0]["currently_effective"], false);
+    assert!(shown["records"][0].get("effective_from").is_none());
+    assert!(shown["records"][0].get("effective_until").is_none());
+    assert_eq!(shown["records"][0]["body"], body);
+    let ledger = fs::read_to_string(root.join(".badr/evidence.jsonl")).unwrap();
+    let receipt: Value = serde_json::from_str(ledger.lines().last().unwrap()).unwrap();
+    assert_eq!(
+        receipt["changes"][0]["body_sha256"],
+        format!("{:x}", Sha256::digest(body.as_bytes()))
+    );
+    fs::write(
+        &path,
+        fs::read_to_string(&path).unwrap() + "# unauthorized edit\r\n",
+    )
+    .unwrap();
+    check(decide(root, "BRR-ORD-001", &[]), 2);
+    assert_eq!(
+        fs::read_to_string(root.join(".badr/evidence.jsonl")).unwrap(),
+        ledger
+    );
+    check(run(root, &["validate"]), 2);
+}
+
+#[test]
+fn successor_approval_requires_observable_compatibility_treatment_without_replacement() {
+    let dir = repo();
+    let root = dir.path();
+    check(run(root, ADD), 0);
+    check(
+        run(
+            root,
+            &[
+                "new",
+                "brr",
+                "successor",
+                "--domain",
+                "ordering",
+                "--owner",
+                "Product",
+            ],
+        ),
+        0,
+    );
+    let path = root.join(".badr/brrs/domains/ordering/rules/BRR-ORD-001-successor.feature");
+    let text = fs::read_to_string(&path)
+        .unwrap()
+        .replace("TODO describe", "Describe")
+        .replace("Feature:", "@successor\nFeature:");
+    fs::write(&path, &text).unwrap();
+    check(
+        run(
+            root,
+            &[
+                "propose",
+                "BRR-ORD-001",
+                "--confirm",
+                "--actor",
+                "Human",
+                "--rationale",
+                "Ready",
+            ],
+        ),
+        0,
+    );
+    check(decide(root, "BRR-ORD-001", &[]), 2);
+    let data = "    @compatibility:existing-data @treatment:grandfather\n    Scenario: Retain existing orders\n      Given an order already exists\n      When the new policy is introduced\n      Then its original cancellation rights remain\n";
+    fs::write(&path, fs::read_to_string(&path).unwrap() + data).unwrap();
+    check(decide(root, "BRR-ORD-001", &[]), 2);
+    let flight = "    @compatibility:in-flight @treatment:re-evaluate\n    Scenario: Re-evaluate in-flight cancellations\n      Given a cancellation is in flight\n      When the new policy is introduced\n      Then its eligibility is evaluated under the new policy\n";
+    fs::write(&path, fs::read_to_string(&path).unwrap() + flight).unwrap();
+    check(decide(root, "BRR-ORD-001", &[]), 0);
+    let shown = check(run(root, &["show", "BRR-ORD-001"]), 0);
+    assert_eq!(shown["records"][0]["supersedes"], serde_json::json!([]));
+    assert_eq!(shown["records"][0]["superseded_by"], serde_json::json!([]));
+    assert_eq!(shown["records"][0]["currently_effective"], false);
+    check(run(root, &["validate"]), 0);
+}
+
+fn ready_adr(root: &Path) -> std::path::PathBuf {
+    check(run(root, &["new", "adr", "decision"]), 0);
+    let path = root.join(".badr/adrs/0001-decision.md");
+    fs::write(
+        &path,
+        fs::read_to_string(&path)
+            .unwrap()
+            .replace("TODO:", "Reviewed:"),
+    )
+    .unwrap();
+    path
+}
+
+#[test]
+fn approval_refuses_missing_evidence_and_unusable_baseline_without_writes() {
+    for fault in [
+        "evidence",
+        "missing-baseline",
+        "shallow",
+        "invalid-relationship",
+        "unresolved-gap",
+        "illegal-status",
+    ] {
+        let dir = repo();
+        let root = dir.path();
+        let path = ready_adr(root);
+        match fault {
+            "evidence" => fs::remove_file(root.join(".badr/evidence.jsonl")).unwrap(),
+            "missing-baseline" => {
+                git(root, &["switch", "-c", "feature"]);
+                git(root, &["branch", "-D", "trunk"]);
+            }
+            "shallow" => fs::write(
+                root.join(".git/shallow"),
+                git(root, &["rev-parse", "HEAD"]) + "\n",
+            )
+            .unwrap(),
+            "invalid-relationship" => fs::write(
+                &path,
+                fs::read_to_string(&path).unwrap().replacen(
+                    "status: proposed",
+                    "related_adrs: [\"9999\"]\nstatus: proposed",
+                    1,
+                ),
+            )
+            .unwrap(),
+            "unresolved-gap" => fs::write(
+                &path,
+                fs::read_to_string(&path).unwrap() + "\nTBD: resolve storage guarantees\n",
+            )
+            .unwrap(),
+            _ => fs::write(
+                &path,
+                fs::read_to_string(&path)
+                    .unwrap()
+                    .replace("status: proposed", "status: rejected"),
+            )
+            .unwrap(),
+        }
+        let original = fs::read(&path).unwrap();
+        let evidence = fs::read(root.join(".badr/evidence.jsonl")).ok();
+        check(
+            decide(root, "0001", &[]),
+            if matches!(fault, "missing-baseline" | "shallow") {
+                3
+            } else {
+                2
+            },
+        );
+        assert_eq!(fs::read(&path).unwrap(), original, "{fault}");
+        assert_eq!(fs::read(root.join(".badr/evidence.jsonl")).ok(), evidence);
+        assert!(!root.join(".badr.lock").exists());
+    }
+}
+
+#[test]
+fn approval_reports_every_partial_write_boundary_and_retains_repair_lock() {
+    for (point, count) in [
+        ("before_apply", 0),
+        ("before_write_0", 0),
+        ("after_write_0", 1),
+        ("before_write_1", 1),
+        ("after_write_1", 2),
+        ("before_postvalidate", 2),
+        ("after_postvalidate", 2),
+    ] {
+        let dir = repo();
+        let root = dir.path();
+        ready_adr(root);
+        let mut args = vec!["decide", "0001"];
+        args.extend_from_slice(APPROVE);
+        let out = Command::new(env!("CARGO_BIN_EXE_badr"))
+            .arg("--repo")
+            .arg(root)
+            .arg("--json")
+            .args(&args)
+            .env("BADR_TEST_FAIL_AT", point)
+            .output()
+            .unwrap();
+        let result = check(out, 4);
+        let paths = [".badr/adrs/0001-decision.md", ".badr/evidence.jsonl"];
+        assert_eq!(
+            result["partial_write"]["completed"],
+            serde_json::json!(paths[..count]),
+            "{point}"
+        );
+        assert_eq!(
+            result["partial_write"]["not_completed"],
+            serde_json::json!(paths[count..])
+        );
+        assert_eq!(root.join(".badr.lock").exists(), count > 0);
+        assert!(result["proposed_audit_commit_message"].is_null());
+        if count > 0 {
+            check(decide(root, "0001", &[]), 4);
+        }
+        check(run(root, &["validate"]), if count == 1 { 2 } else { 0 });
+    }
+}
+
+#[test]
+fn approval_detects_baseline_and_external_content_changes_before_publication() {
+    for fault in ["baseline", "body"] {
+        let dir = repo();
+        let root = dir.path();
+        let path = ready_adr(root);
+        let control = tempfile::tempdir().unwrap();
+        let mut args = vec!["decide", "0001"];
+        args.extend_from_slice(APPROVE);
+        let child = Command::new(env!("CARGO_BIN_EXE_badr"))
+            .arg("--repo")
+            .arg(root)
+            .arg("--json")
+            .args(&args)
+            .env("BADR_TEST_PAUSE_AT", "before_apply")
+            .env("BADR_TEST_CONTROL", control.path())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+            .unwrap();
+        let start = std::time::Instant::now();
+        while !control.path().join("ready").exists() {
+            assert!(start.elapsed().as_secs() < 15);
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        if fault == "baseline" {
+            git(
+                root,
+                &[
+                    "-c",
+                    "user.name=Test",
+                    "-c",
+                    "user.email=test@example.invalid",
+                    "commit",
+                    "--allow-empty",
+                    "-m",
+                    "baseline moved",
+                ],
+            );
+        } else {
+            fs::write(
+                &path,
+                fs::read_to_string(&path).unwrap() + "\nExternal editor change\n",
+            )
+            .unwrap();
+        }
+        let expected = fs::read(&path).unwrap();
+        let evidence = fs::read(root.join(".badr/evidence.jsonl")).unwrap();
+        fs::write(control.path().join("resume"), "resume").unwrap();
+        let result = check(child.wait_with_output().unwrap(), 4);
+        assert_eq!(result["partial_write"]["completed"], serde_json::json!([]));
+        assert_eq!(fs::read(&path).unwrap(), expected);
+        assert_eq!(
+            fs::read(root.join(".badr/evidence.jsonl")).unwrap(),
+            evidence
+        );
+        assert!(!root.join(".badr.lock").exists());
     }
 }

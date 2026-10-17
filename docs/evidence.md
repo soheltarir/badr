@@ -7,8 +7,8 @@ malformed hashes/times/IDs, duplicate event IDs, and duplicate affected numeric
 identities are errors. [The event schema](evidence-schema-v1.json) describes the
 wire shape; replay adds state, relationship, and history constraints.
 
-Domain registration and BRR proposal create governed events; record creation
-creates allocation events. Approval, external-edit registration, evidence repair,
+Domain registration, BRR proposal, and explicit approval create governed events;
+record creation creates allocation events. External-edit registration, evidence repair,
 and the remaining lifecycle commands remain unavailable.
 Missing evidence cannot be replaced by a successful syntax check. Do not invent
 receipts to bless an existing status or changed body.
@@ -28,7 +28,10 @@ Governed events require nonempty `actor`, nonempty `rationale`, and
 `confirmed: true`. Confirmation records the caller's declaration of human
 review/authorization; it does not authenticate an approver or prove semantic
 adequacy. Recorded times and branch names are declarations, not independently
-authenticated observations. Allocation is not an approval.
+authenticated observations. Allocation is not an approval. `decide` additionally requires `reviewed: true`,
+recording the explicit declaration that applicable content and gaps were reviewed
+and resolved. Missing/false declarations are integrity errors, including in
+retained receipts. Agents obtain human authorization outside BADR.
 
 Each change contains:
 

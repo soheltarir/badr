@@ -376,10 +376,10 @@ pub(super) fn run(
             if !lock.owned() {
                 return Err(io::Error::other("Writer lock was replaced externally").into());
             }
-            report.result = if operation == "propose" {
-                "proposed"
-            } else {
-                "created"
+            report.result = match operation {
+                "propose" => "proposed",
+                "decide" => "approved",
+                _ => "created",
             }
             .into();
             report.affected_ids = affected_ids;
