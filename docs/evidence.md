@@ -7,15 +7,15 @@ malformed hashes/times/IDs, duplicate event IDs, and duplicate affected numeric
 identities are errors. [The event schema](evidence-schema-v1.json) describes the
 wire shape; replay adds state, relationship, and history constraints.
 
-This milestone reads evidence. It does not create receipts, approve content,
-register external edits, repair evidence, or implement lifecycle commands.
+Domain registration creates governed registration events. Record approval,
+external-edit registration, evidence repair, and lifecycle commands remain unavailable.
 Missing evidence cannot be replaced by a successful syntax check. Do not invent
 receipts to bless an existing status or changed body.
 
 ## Events and revisions
 
 Every event has `version: 1`, a unique nonempty `event_id`, `operation`, `at`,
-`branch`, `baseline_commit`, and a nonempty `changes` array. `at` has ISO 8601
+`branch`, `baseline_commit`, and a `changes` array (nonempty for record events). `at` has ISO 8601
 seconds, a `T` separator, and UTC `Z`; times cannot be future or decrease within
 the ledger. Fractional seconds and same-second operations are valid; time ordering
 compares parsed instants, not timestamp spelling. `branch` is a literal Git branch
@@ -142,3 +142,17 @@ numbers for event decoding/replay failures; record diagnostics include the
 record path and ID. History diagnostics identify the retained commit when
 applicable. Human diagnostics use stderr; JSON diagnostics remain on stdout.
 Validation never writes, changes status, refreshes hashes, or repairs evidence.
+
+## Domain registration events
+
+`domain_add` has `domain: {"slug": "ordering", "prefix": "ORD"}` and an empty
+`changes` array: registration does not allocate a record ID. It requires explicit
+confirmation, actor, rationale, actual UTC time, named current branch, and the
+baseline commit resolved at operation start. It cannot carry a replacement set.
+A domain slug/prefix may be registered only once in the retained event sequence.
+Current and historical snapshots must retain every evidenced domain and its
+glossary. Glossary content is editable; registration does not freeze its meaning.
+Available registries across local refs permanently reserve prefix ownership,
+including registries subsequently deleted from a branch. Registration refuses
+reassignment even when the current registry no longer mentions that prefix.
+The local-history guarantee cannot see unseen clones or deliberately erased refs.

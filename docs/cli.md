@@ -2,7 +2,8 @@
 
 BADR implements initialization and read-only BRR/ADR inspection and structural
 validation, operation-evidence replay, exact frozen-body checks, and retained
-Git revision checks. Record authoring and lifecycle commands remain unavailable.
+Git revision checks, and governed domain registration. Record authoring and
+lifecycle commands remain unavailable.
 See the [versioned evidence contract](evidence.md) for the event schema and
 coverage limits.
 
@@ -149,12 +150,12 @@ there are no timestamps or random operation identifiers in these read reports.
 The same repository state produces the same JSON bytes.
 
 - `schema_version`: integer `1`; breaking contract changes require a new version.
-- `operation`: `init`, `list`, `show`, `validate`, or `arguments`.
+- `operation`: `init`, `domain_add`, `list`, `show`, `validate`, or `arguments`.
 - `success`: true only for exit 0.
-- `result`: `created`/`unchanged` for successful init, `ok` for successful
+- `result`: `created`/`unchanged` for successful init, `created` for domain registration, `ok` for successful
   inspection, otherwise `invalid`, `incomplete`, or `operational_failure`.
 - `exit_code`: the process exit code.
-- `affected_ids`: empty for these operations because no record is mutated.
+- `affected_ids`: empty for these operations; domain registration allocates no record ID.
 - `records`: BRR objects ordered by ID then path. Each has `type: "brr"`,
   `id`, `domain`, `status`, `owners`, relationship lists, optional description
   and applicability times, managed-relative `path`, Feature `title`,
@@ -184,7 +185,14 @@ The same repository state produces the same JSON bytes.
 - `partial_write`: `completed` and `not_completed` arrays of managed file
   paths. These record writes performed or attempted by this invocation;
   both arrays are empty for read-only operations and unchanged init.
+  For domain registration, these arrays follow publication order (glossary,
+  registry, evidence). `not_completed` includes intended paths left unwritten
+  when an operation stops; it is populated after successful prevalidation.
+  Directory scaffolding may remain after a failed publication.
   No transaction journal or automatic rollback is provided.
+- `proposed_audit_commit_message`: null for reads, init, and failed registration;
+  a proposed message describing the domain, prefix, actor, rationale, baseline,
+  and event ID after successful registration. Review and commit manually.
 
 ## Writer lock and cleanup
 
@@ -200,3 +208,86 @@ Only after confirming that no active writer owns the lock, explicitly remove
 a lock to bypass an active writer. A failure before configuration publication
 can leave an empty `.badr/` directory; rerunning init can reuse it. Individual
 configuration publication is exclusive; multi-file crash recovery is deferred.
+
+## Governed domain registration
+
+```sh
+badr domain add ordering --prefix ORD --confirm --actor "Human" \
+  --rationale "Establish ordering vocabulary" --json
+```
+
+All arguments are explicit; no prompt or editor is required. `--confirm` records
+the caller's declaration of human authorization, without authenticating it.
+A slug consists of lowercase ASCII letters/digits separated by single hyphens;
+a prefix contains uppercase ASCII letters. Both must be unique and permanently
+retain their ownership. Repeating registration is refused, preserving files.
+The command requires a named checkout and a usable baseline with complete
+required history. Missing/unborn/shallow history blocks writes even when init
+was allowed. The baseline is resolved once for validation/evidence and its ref
+is compared with that immutable commit before each publication and at completion.
+
+Registration validates the entire collection and evidence/history under the
+repository-local writer lock. Existing unrelated invalidity blocks the command.
+It prevalidates a complete temporary intended state using the same validators,
+then publishes the glossary, registry, and appended evidence in that order.
+The registry is created only when absent; existing rules and domains survive.
+Only needed directories are created; no empty `rules/` or ADR directory is added.
+Expected content and file identities detect external replacements/edits; the
+complete managed snapshot is compared at every write boundary. Directory-relative
+opens refuse symlink traversal. New files use exclusive publication; existing
+files use atomic per-file replacement. Postwrite validation checks the entire
+collection again. Unrelated uncommitted files are preserved.
+
+Human and JSON output report completed/pending paths, pending Git durability,
+and the proposed audit commit message. Neither registration nor any other BADR
+command stages or commits. Review the three reported files and configuration,
+then stage only `.badr/` (or explicit managed file paths). Repository-root
+`.badr.lock` and `.badr-write-<pid>` are operational files, outside `.badr/`;
+never stage them or use an indiscriminate `git add .` for an audit commit.
+Intended-state scratch lives in the system temporary directory. If `.badr/`
+lives on a different filesystem, publication fails safely rather than falling
+back to a non-atomic copy.
+
+After any failure once publication has begun, exit 4 and a retained lock mark
+manual repair as required. This includes a detected postwrite problem and an
+operation that wrote all files but failed its final checks. A later read-only
+validation may pass; it does not erase the known failure or clear the lock.
+Before-write failures publish nothing and release their own lock. The command
+never removes an existing lock or a lock that replaced its own inode.
+
+For explicit stale-lock cleanup:
+
+1. Inspect `.badr.lock` (domain writers record PID, UTC start time, and operation).
+   On the machine owning this working tree, inspect `ps -p <pid> -o pid,lstart,command`
+   and `lsof <repo>/.badr.lock`; account for PID reuse and shared working trees.
+   A missing PID alone is insufficient on a shared filesystem. Establish that
+   no BADR writer is active, coordinating with other users if necessary.
+2. Preserve `git status`, the failure report, lock contents, retained evidence,
+   and current managed files. Inspect staged and unstaged diffs. If an operation
+   was interrupted, compare every reported completed/pending path. An interrupted
+   process may not have returned a report; use Git, evidence, worktree contents,
+   and any root `.badr-write-<pid>` scratch to establish what happened.
+3. Manually restore a consistent, known state or finish only writes for which
+   the original authorization/evidence is known. Do not invent events, refresh
+   digests to bless damage, or discard unrelated changes. Run `badr validate`;
+   resolve all invalidity/incomplete history before proceeding.
+4. Only after no writer is active and repair is reviewed, explicitly remove
+   that stale `.badr.lock` and any identified stale `.badr-write-<pid>` scratch.
+   Validate again before the next managed mutation. BADR never auto-cleans
+   another process's lock or performs automatic rollback.
+
+**V1 debt:** writes are not atomic across files. There is no transaction journal,
+automatic rollback, or guaranteed crash recovery. A crash can leave any subset
+of the three files and directory scaffolding. Arbitrary editors do not honor
+BADR's lock; expected-content checks detect observed edits but cannot provide
+an atomic compare-and-replace against an editor racing the final rename.
+Do not edit managed storage during a governed write. Symlink traversal is
+refused by descriptor-relative directory opens even during replacement races.
+
+Debug builds expose `BADR_TEST_FAIL_AT`, `BADR_TEST_PAUSE_AT`, and
+`BADR_TEST_CONTROL` solely for deterministic executable integration checks.
+Release builds ignore them. Boundary names are `before_apply`,
+`before_write_0..2`, `after_write_0..2`, `before_postvalidate`, and
+`validate_written`, and `after_postvalidate`; pause writes a `ready` marker in the control directory
+and waits at most 15 seconds for `resume`. These controls cannot authorize
+or bypass validation.
