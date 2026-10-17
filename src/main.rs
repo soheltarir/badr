@@ -35,6 +35,13 @@ enum Operation {
         #[command(subcommand)]
         command: repository::domain::Command,
     },
+    /// Create a draft BRR or proposed ADR without prompts.
+    New {
+        #[command(subcommand)]
+        command: repository::authoring::Command,
+    },
+    /// Submit a structurally valid draft BRR for review.
+    Propose(repository::authoring::Proposal),
     /// Inspect managed records with explicit applicability selection.
     List {
         #[command(flatten)]
@@ -71,6 +78,8 @@ fn main() -> ExitCode {
         }
     };
     let report = match cli.command {
+        Operation::Propose(proposal) => repository::authoring::propose(&cli.repo, proposal),
+        Operation::New { command } => repository::authoring::new(&cli.repo, command),
         Operation::Domain { command } => repository::domain::run(&cli.repo, command),
         Operation::Init { baseline } => repository::init(&cli.repo, &baseline),
         Operation::List { filter } => repository::select(&cli.repo, "list", &filter, None),
@@ -99,7 +108,10 @@ fn emit(report: Report, json: bool) -> ExitCode {
             );
         }
         let mut output = format!("{}: {}\n", report.operation, report.result);
-        if report.operation == "domain_add" {
+        if matches!(
+            report.operation.as_str(),
+            "domain_add" | "new_brr" | "new_adr" | "propose"
+        ) {
             output.push_str(&format!(
                 "Completed writes: {:?}\nNot completed: {:?}\nPending audit commit: {:?}\n",
                 report.partial_write.completed,

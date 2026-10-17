@@ -2,8 +2,8 @@
 
 BADR implements initialization and read-only BRR/ADR inspection and structural
 validation, operation-evidence replay, exact frozen-body checks, and retained
-Git revision checks, and governed domain registration. Record authoring and
-lifecycle commands remain unavailable.
+Git revision checks, governed domain registration, record creation, and BRR
+proposal. Approval and the remaining lifecycle commands remain unavailable.
 See the [versioned evidence contract](evidence.md) for the event schema and
 coverage limits.
 
@@ -150,12 +150,15 @@ there are no timestamps or random operation identifiers in these read reports.
 The same repository state produces the same JSON bytes.
 
 - `schema_version`: integer `1`; breaking contract changes require a new version.
-- `operation`: `init`, `domain_add`, `list`, `show`, `validate`, or `arguments`.
+- `operation`: `init`, `domain_add`, `new_brr`, `new_adr`, `propose`, `list`,
+  `show`, `validate`, or `arguments`.
 - `success`: true only for exit 0.
-- `result`: `created`/`unchanged` for successful init, `created` for domain registration, `ok` for successful
+- `result`: `created`/`unchanged` for successful init, `created` for registration/creation, `proposed` for BRR proposal, `ok` for successful
   inspection, otherwise `invalid`, `incomplete`, or `operational_failure`.
 - `exit_code`: the process exit code.
-- `affected_ids`: empty for these operations; domain registration allocates no record ID.
+- `affected_ids`: the created/proposed record ID after complete-change planning;
+  empty for inspection, initialization, and domain registration. Partial failures
+  retain the intended ID; inspect `partial_write` to establish what was written.
 - `records`: BRR objects ordered by ID then path. Each has `type: "brr"`,
   `id`, `domain`, `status`, `owners`, relationship lists, optional description
   and applicability times, managed-relative `path`, Feature `title`,
@@ -190,9 +193,9 @@ The same repository state produces the same JSON bytes.
   when an operation stops; it is populated after successful prevalidation.
   Directory scaffolding may remain after a failed publication.
   No transaction journal or automatic rollback is provided.
-- `proposed_audit_commit_message`: null for reads, init, and failed registration;
-  a proposed message describing the domain, prefix, actor, rationale, baseline,
-  and event ID after successful registration. Review and commit manually.
+- `proposed_audit_commit_message`: null for reads, init, and failed writes;
+  a proposed message describing the operation, identity/domain, baseline, event ID,
+  and actor/rationale for governed operations after success. Review and commit manually.
 
 ## Writer lock and cleanup
 
@@ -257,7 +260,7 @@ never removes an existing lock or a lock that replaced its own inode.
 
 For explicit stale-lock cleanup:
 
-1. Inspect `.badr.lock` (domain writers record PID, UTC start time, and operation).
+1. Inspect `.badr.lock` (writers record PID, UTC start time, and operation).
    On the machine owning this working tree, inspect `ps -p <pid> -o pid,lstart,command`
    and `lsof <repo>/.badr.lock`; account for PID reuse and shared working trees.
    A missing PID alone is insufficient on a shared filesystem. Establish that
@@ -277,8 +280,8 @@ For explicit stale-lock cleanup:
    another process's lock or performs automatic rollback.
 
 **V1 debt:** writes are not atomic across files. There is no transaction journal,
-automatic rollback, or guaranteed crash recovery. A crash can leave any subset
-of the three files and directory scaffolding. Arbitrary editors do not honor
+automatic rollback, or guaranteed crash recovery. A crash can leave a subset
+of the intended files and directory scaffolding. Arbitrary editors do not honor
 BADR's lock; expected-content checks detect observed edits but cannot provide
 an atomic compare-and-replace against an editor racing the final rename.
 Do not edit managed storage during a governed write. Symlink traversal is
@@ -291,3 +294,56 @@ Release builds ignore them. Boundary names are `before_apply`,
 `validate_written`, and `after_postvalidate`; pause writes a `ready` marker in the control directory
 and waits at most 15 seconds for `resume`. These controls cannot authorize
 or bypass validation.
+
+
+## Record creation and BRR proposal
+
+```sh
+badr new brr order-cancellation --domain ordering --owner Product --owner Engineering
+badr new adr storage-choice
+badr new brr supplied-rule --domain ordering --content /path/to/rule.feature --json
+badr new adr supplied-decision --content /path/to/decision.md --json
+badr propose BRR-ORD-001 --confirm --actor "Human" --rationale "Ready for review"
+```
+
+The title argument is a lowercase filename slug. BRR creation requires an existing
+registered domain. Template BRRs require one or more `--owner` values; supplied
+BRRs take owners from their content. BRRs start as `draft` and are registered
+immediately; ADRs start as `proposed`, without an ADR index. Directories are
+created lazily. Bundled TODO scaffolds satisfy structural validation; they do
+not establish adequate business rules or completed decision reasoning.
+The ADR template is BADR's adaptation of MADR 4.0.0 under CC0-1.0; see
+[third-party notices](../THIRD_PARTY_NOTICES.md).
+
+`--content` reads a complete UTF-8 file, including frontmatter, relative to the
+caller's current directory (absolute paths are also accepted). Valid supplied
+bytes are preserved exactly. Content must use the next allocated ID, the selected
+BRR domain, the legal initial status, and valid metadata/body structure. ADR
+`date` must equal today's UTC operation date. Allocation cannot establish related
+or replacement links; leave these lists empty. Invalid content is refused before
+publication, without reserving an ID. No command prompts or launches an editor.
+
+Allocation considers current records, retained evidence, and records/evidence
+through all locally referenced Git history, including other branches and earlier
+deleted files. BRR numbers advance per registered prefix; ADR numbers share one
+sequence regardless of padding. New numbers use at least three BRR/four ADR
+digits. Arbitrarily large decimal identities remain reserved. Unseen clones
+cannot coordinate allocations; merged numeric collisions are errors requiring
+explicit human resolution. BADR never silently renumbers a record.
+
+Creation uses the shared writer lock and full pre/postvalidation. The allocation
+receipt is published first, then the exclusively created record, then the BRR
+registry when applicable. Partial reports list this exact order. An interrupted
+creation retains its receipt/reservation and lock even if the record was never
+published; repair must preserve the reservation. Deleting an uncommitted proposal
+is an integrity error, not a way to release its ID. Restore the known record;
+BADR does not provide a delete command or bypass unrelated invalidity to allocate.
+
+`propose` accepts only a structurally valid draft BRR. It requires explicit
+`--confirm`, nonempty `--actor` and `--rationale`, records a governed event, and
+moves only to `proposed`; it grants no approval or applicability. It serializes
+frontmatter while preserving the exact Gherkin body, including line endings.
+Publication order is record then evidence. Creation and proposal report affected
+IDs, pending audit durability, and a proposed commit message; BADR never stages
+or commits. All shared baseline, path, lock, expected-content, and manual-repair
+rules above apply.

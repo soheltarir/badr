@@ -1331,3 +1331,60 @@ fn check_registered_domains(
         }
     }
 }
+
+// Reserve identities across all local refs, including records/evidence later deleted there.
+pub(super) fn reserved_ids(root: &Path) -> Result<Vec<String>, super::Failure> {
+    fn checked(root: &Path, args: &[&str]) -> Result<String, super::Failure> {
+        let out = git(root, args)?;
+        if !out.status.success() {
+            return Err(io::Error::other(String::from_utf8_lossy(&out.stderr).into_owned()).into());
+        }
+        String::from_utf8(out.stdout).map_err(|e| e.to_string().into())
+    }
+    fn allocations(text: &str, ids: &mut Vec<String>) -> Result<(), super::Failure> {
+        for line in text.lines().filter(|line| !line.trim().is_empty()) {
+            let event: Event = serde_json::from_str(line).map_err(|e| e.to_string())?;
+            ids.extend(event.changes.into_iter().map(|c| c.id));
+        }
+        Ok(())
+    }
+    let mut ids = Vec::new();
+    match fs::read_to_string(root.join(LEDGER)) {
+        Ok(text) => allocations(&text, &mut ids)?,
+        Err(e) if e.kind() == io::ErrorKind::NotFound => {}
+        Err(e) => return Err(e.into()),
+    }
+    let commits = checked(
+        root,
+        &["rev-list", "--full-history", "--all", "HEAD", "--", ".badr"],
+    )?;
+    let mut blobs = BTreeSet::new();
+    for commit in commits.lines() {
+        let tree = checked(root, &["ls-tree", "-r", "-z", commit, "--", ".badr"])?;
+        for entry in tree.split('\0').filter(|s| !s.is_empty()) {
+            let (meta, path) = entry.split_once('\t').ok_or("Malformed Git tree")?;
+            let record = path.starts_with(".badr/adrs/") && path.ends_with(".md")
+                || path.starts_with(".badr/brrs/") && path.ends_with(".feature");
+            if !record && path != LEDGER {
+                continue;
+            }
+            let fields: Vec<_> = meta.split_whitespace().collect();
+            if fields.len() != 3 || !matches!(fields[0], "100644" | "100755") || fields[1] != "blob"
+            {
+                return Err("Cannot allocate from unsafe retained record/evidence storage".into());
+            }
+            if !blobs.insert((fields[2].to_owned(), path.to_owned())) {
+                continue;
+            }
+            let text = checked(root, &["cat-file", "blob", fields[2]])?;
+            if path == LEDGER {
+                allocations(&text, &mut ids)?;
+            } else if path.ends_with(".feature") {
+                ids.push(super::brr::parse(&text, path)?.metadata.id);
+            } else {
+                ids.push(crate::adr::retained(&text, path)?.metadata.id);
+            }
+        }
+    }
+    Ok(ids)
+}

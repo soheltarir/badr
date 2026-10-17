@@ -32,3 +32,19 @@ CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
 OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
 IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
+
+
+## ADR template
+
+`src/templates/adr.md` is a BADR-owned adaptation of
+[adr/madr 4.0.0, template/adr-template.md](https://github.com/adr/madr/blob/4.0.0/template/adr-template.md),
+following the reference adaptation in kata at commit
+`faaae5d97386941810bb1a7ac319aafd753c95fd`. It retains the required reasoning
+sections and makes unresolved proposal content explicit. BADR supplies its own
+identity/status/date frontmatter and does not depend on kata at runtime.
+Optional Confirmation and detailed option analysis may be added by authors.
+
+Upstream offers MIT OR CC0-1.0. The chosen license for this template adaptation
+is **CC0-1.0**, retained from the reference adaptation. SPDX-License-Identifier:
+CC0-1.0. This adaptation is dedicated to the public domain under
+[CC0 1.0 Universal](https://creativecommons.org/publicdomain/zero/1.0/).

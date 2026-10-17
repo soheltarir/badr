@@ -1,9 +1,13 @@
+#[path = "authoring.rs"]
+pub(crate) mod authoring;
 #[path = "brr.rs"]
 mod brr;
 #[path = "domain.rs"]
 pub(crate) mod domain;
 #[path = "evidence.rs"]
 mod evidence;
+#[path = "mutation.rs"]
+mod mutation;
 
 use serde::{Deserialize, Serialize};
 use std::{
@@ -285,7 +289,7 @@ pub(crate) fn init(target: &Path, branch: &str) -> Report {
     if let Err(e) = check_branch(&root, branch) {
         return Report::invalid("init", "invalid_baseline", e);
     }
-    let _lock = match domain::WriterLock::acquire(&root, "init") {
+    let _lock = match mutation::WriterLock::acquire(&root, "init") {
         Ok(lock) => lock,
         Err(e) => {
             report.fail(
