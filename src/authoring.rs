@@ -368,10 +368,13 @@ pub(crate) fn decide(target: &Path, approval: Approval) -> Report {
                                             | "treatment:reject"
                                     )
                                 })
-                                && !scenario.steps.is_empty()
+                                && scenario.steps.iter().any(|step| {
+                                    step.ty == gherkin::StepType::Then
+                                        && !step.value.trim().is_empty()
+                                })
                         })
                     {
-                        return Err(format!("Successor BRRs require an observable @compatibility:{scope} scenario with @treatment:grandfather, migrate, re-evaluate, or reject").into());
+                        return Err(format!("Successor BRRs require an observable @compatibility:{scope} scenario with a Then outcome and @treatment:grandfather, migrate, re-evaluate, or reject").into());
                     }
                 }
             }

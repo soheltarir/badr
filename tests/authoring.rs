@@ -988,7 +988,14 @@ fn successor_approval_requires_observable_compatibility_treatment_without_replac
     fs::write(&path, fs::read_to_string(&path).unwrap() + data).unwrap();
     check(decide(root, "BRR-ORD-001", &[]), 2);
     let flight = "    @compatibility:in-flight @treatment:re-evaluate\n    Scenario: Re-evaluate in-flight cancellations\n      Given a cancellation is in flight\n      When the new policy is introduced\n      Then its eligibility is evaluated under the new policy\n";
-    fs::write(&path, fs::read_to_string(&path).unwrap() + flight).unwrap();
+    let before_flight = fs::read_to_string(&path).unwrap();
+    let no_outcome = flight.replace(
+        "      Then its eligibility is evaluated under the new policy\n",
+        "",
+    );
+    fs::write(&path, before_flight.clone() + &no_outcome).unwrap();
+    check(decide(root, "BRR-ORD-001", &[]), 2);
+    fs::write(&path, before_flight + flight).unwrap();
     check(decide(root, "BRR-ORD-001", &[]), 0);
     let shown = check(run(root, &["show", "BRR-ORD-001"]), 0);
     assert_eq!(shown["records"][0]["supersedes"], serde_json::json!([]));

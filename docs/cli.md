@@ -373,7 +373,7 @@ passing a marker/structure check never establishes completeness.
 Mark an intended successor BRR with `@successor` on its Feature before approval.
 This expresses intent without a completed replacement link or replacement set.
 It requires scenarios under its Rule tagged `@compatibility:existing-data` and
-`@compatibility:in-flight`. Each must have observable steps and an explicit
+`@compatibility:in-flight`. Each must have a nonempty `Then` outcome step and an explicit
 `@treatment:grandfather`, `@treatment:migrate`, `@treatment:re-evaluate`, or
 `@treatment:reject` tag. One scenario may cover both scopes. For example:
 
