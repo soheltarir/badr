@@ -459,17 +459,9 @@ pub(super) fn inspect(root: &Path, files: &BTreeSet<String>, report: &mut Report
         None
     };
     if let Some(registry) = &registry {
-        let mut prefixes = BTreeSet::new();
         let mut paths = BTreeSet::new();
         let mut identities = BTreeSet::new();
-        for (domain, value) in &registry.domains {
-            if !slug(domain) || !prefix(value) || !prefixes.insert(value) {
-                invalid(
-                    report,
-                    REGISTRY,
-                    format!("Invalid/duplicate domain or uppercase prefix: {domain}: {value}"),
-                );
-            }
+        for domain in registry.domains.keys() {
             let glossary = format!(".badr/brrs/domains/{domain}/glossary.md");
             if !files.contains(&glossary) {
                 invalid(
