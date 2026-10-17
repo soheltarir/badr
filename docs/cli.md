@@ -2,8 +2,9 @@
 
 BADR implements initialization and read-only BRR/ADR inspection and structural
 validation, operation-evidence replay, exact frozen-body checks, and retained
-Git revision checks, governed domain registration, record creation, and BRR
-proposal. Approval and the remaining lifecycle commands remain unavailable.
+Git revision checks, governed domain registration, record creation, BRR proposal,
+and ordinary record editing. Approval and the remaining lifecycle commands
+remain unavailable.
 See the [versioned evidence contract](evidence.md) for the event schema and
 coverage limits.
 
@@ -15,8 +16,9 @@ badr --repo /path/to/existing/repository validate --json
 
 `--repo` defaults to the current directory. A directory inside a working tree
 selects that working tree's root. `--json` and `--repo` may precede or follow
-the command. No operation prompts, launches an editor, fetches, runs project
-scripts, initializes Git, stages files, or commits.
+the command. No operation prompts or fetches. Only explicit `edit --editor`
+launches an editor; no operation runs project scripts, initializes Git, stages
+files, or commits.
 
 `init` requires `--baseline <local-branch>`; `main` is a recommendation only.
 It writes only `.badr/config.yaml`, creating `.badr/` if necessary. Matching
@@ -150,14 +152,14 @@ there are no timestamps or random operation identifiers in these read reports.
 The same repository state produces the same JSON bytes.
 
 - `schema_version`: integer `1`; breaking contract changes require a new version.
-- `operation`: `init`, `domain_add`, `new_brr`, `new_adr`, `propose`, `list`,
+- `operation`: `init`, `domain_add`, `new_brr`, `new_adr`, `propose`, `edit`, `list`,
   `show`, `validate`, or `arguments`.
 - `success`: true only for exit 0.
-- `result`: `created`/`unchanged` for successful init, `created` for registration/creation, `proposed` for BRR proposal, `ok` for successful
+- `result`: `created`/`unchanged` for successful init, `created` for registration/creation, `proposed` for BRR proposal, `edited`/`unchanged` for editing, `ok` for successful
   inspection, otherwise `invalid`, `incomplete`, or `operational_failure`.
 - `exit_code`: the process exit code.
-- `affected_ids`: the created/proposed record ID after complete-change planning;
-  empty for inspection, initialization, and domain registration. Partial failures
+- `affected_ids`: the created/proposed/edited record ID after complete-change planning;
+  empty for inspection, initialization, domain registration, and edit no-ops. Partial failures
   retain the intended ID; inspect `partial_write` to establish what was written.
 - `records`: BRR objects ordered by ID then path. Each has `type: "brr"`,
   `id`, `domain`, `status`, `owners`, relationship lists, optional description
@@ -321,7 +323,7 @@ bytes are preserved exactly. Content must use the next allocated ID, the selecte
 BRR domain, the legal initial status, and valid metadata/body structure. ADR
 `date` must equal today's UTC operation date. Allocation cannot establish related
 or replacement links; leave these lists empty. Invalid content is refused before
-publication, without reserving an ID. No command prompts or launches an editor.
+publication, without reserving an ID. Creation never prompts or launches an editor.
 
 Allocation considers current records, retained evidence, and records/evidence
 through all locally referenced Git history, including other branches and earlier
@@ -347,3 +349,60 @@ Publication order is record then evidence. Creation and proposal report affected
 IDs, pending audit durability, and a proposed commit message; BADR never stages
 or commits. All shared baseline, path, lock, expected-content, and manual-repair
 rules above apply.
+
+## Ordinary content editing
+
+```sh
+badr edit BRR-ORD-001 --content /path/to/revised-rule.feature --json
+badr edit 0001 --content /path/to/revised-decision.md --json
+badr edit 0001 --editor /usr/bin/vi
+```
+
+Choose exactly one of `--content` and `--editor`. Supplied content is a complete
+UTF-8 record, including frontmatter; paths are relative to the caller. BADR
+preserves accepted bytes exactly. Draft/proposed bodies may also be edited
+outside BADR; `validate` checks those edits without modifying status or evidence.
+
+`--editor` requires an absolute executable path resolving outside the target
+repository. BADR passes one temporary record path as its only argument, without
+a shell, configuration lookup, repository scripts, or Git hooks. It does not
+consult `EDITOR`, `VISUAL`, or Git's editor settings. Choose a trusted editor
+that waits until saving is complete. The editor runs in a temporary directory,
+on a scratch copy under the writer lock. When available, `/dev/tty` receives
+editor display output; otherwise output is discarded. JSON stdout and diagnostic
+stderr remain clean. A GUI editor can be used if its executable waits for exit;
+editor argument strings and shell commands are unsupported.
+
+A successful editor exit submits the scratch copy to structural and complete-change
+validation. Exit 130 or SIGINT declares cancellation (exit 2); other unsuccessful
+editor exits or launch failures return exit 4. Saving unchanged content returns
+`unchanged`, with empty affected IDs/write lists and no proposed commit message.
+Invalid input, cancellation, editor failure, and no-ops never change managed
+content or evidence. Temporary editor files are removed on normal return.
+
+Editing preserves the allocated ID/path, BRR domain/registry placement, status,
+ADR date, applicability, related/replacement links, and ADR lifecycle notes.
+Descriptive owners/decision-makers may change; BRR description may change only
+in draft/proposed states. Such ordinary edits are not governed lifecycle updates:
+they neither require nor fabricate actor/rationale/confirmation, alter an ADR's
+latest governed-update date, append transition evidence, approve, or reset.
+Governed status, applicability, relationship, or lifecycle-note changes must use
+their dedicated commands with authorization and ADR date semantics where applicable.
+Approved and withdrawn/rejected bodies stay frozen; approved-body reset remains
+unavailable until the separate eligible-reset operation is implemented. Editing
+cannot register or repair an unauthorized external frozen-body change.
+
+The shared safe writer validates the whole current collection and intended result,
+including unrelated records, relationships, evidence, and required history. It
+checks expected bytes/file identities and baseline stability before publishing,
+then revalidates. Existing unrelated invalidity blocks editing. Valid unrelated
+managed/unmanaged changes and staged files are preserved. Only the selected
+record is published; registry and evidence bytes remain unchanged. Failed
+publication/final checks use the shared exact completed/pending path report and
+retained-lock manual-repair behavior. Individual file replacement is atomic;
+arbitrary external editors can still race the final expected-content check.
+
+Human and JSON output report changed IDs, coverage, pending commit durability,
+completed/pending writes, and a proposed audit message after successful changes.
+`edit` never stages or commits, and successful structural validation is not
+human review or authorization.

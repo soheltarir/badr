@@ -40,6 +40,8 @@ enum Operation {
         #[command(subcommand)]
         command: repository::authoring::Command,
     },
+    /// Edit ordinary content without granting approval.
+    Edit(repository::editing::Edit),
     /// Submit a structurally valid draft BRR for review.
     Propose(repository::authoring::Proposal),
     /// Inspect managed records with explicit applicability selection.
@@ -78,6 +80,7 @@ fn main() -> ExitCode {
         }
     };
     let report = match cli.command {
+        Operation::Edit(edit) => repository::editing::run(&cli.repo, edit),
         Operation::Propose(proposal) => repository::authoring::propose(&cli.repo, proposal),
         Operation::New { command } => repository::authoring::new(&cli.repo, command),
         Operation::Domain { command } => repository::domain::run(&cli.repo, command),
@@ -110,7 +113,7 @@ fn emit(report: Report, json: bool) -> ExitCode {
         let mut output = format!("{}: {}\n", report.operation, report.result);
         if matches!(
             report.operation.as_str(),
-            "domain_add" | "new_brr" | "new_adr" | "propose"
+            "domain_add" | "new_brr" | "new_adr" | "propose" | "edit"
         ) {
             output.push_str(&format!(
                 "Completed writes: {:?}\nNot completed: {:?}\nPending audit commit: {:?}\n",
@@ -118,6 +121,16 @@ fn emit(report: Report, json: bool) -> ExitCode {
                 report.partial_write.not_completed,
                 report.pending_commit_durability
             ));
+            if report.operation == "edit" {
+                output.push_str(&format!(
+                    "Changed IDs: {:?}\nValidation coverage: configuration={}, collection={}, evidence={}, history={}\n",
+                    report.affected_ids,
+                    report.validation_coverage.configuration,
+                    report.validation_coverage.collection,
+                    report.validation_coverage.evidence,
+                    report.validation_coverage.history,
+                ));
+            }
             if let Some(message) = &report.proposed_audit_commit_message {
                 output.push_str(&format!("Proposed audit commit message:\n{message}\n"));
             }

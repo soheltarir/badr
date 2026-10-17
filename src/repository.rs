@@ -4,6 +4,8 @@ pub(crate) mod authoring;
 mod brr;
 #[path = "domain.rs"]
 pub(crate) mod domain;
+#[path = "editing.rs"]
+pub(crate) mod editing;
 #[path = "evidence.rs"]
 mod evidence;
 #[path = "mutation.rs"]
@@ -29,7 +31,7 @@ pub(crate) struct Diagnostic {
 }
 #[derive(Serialize)]
 pub(crate) struct Coverage {
-    configuration: &'static str,
+    pub(crate) configuration: &'static str,
     pub(crate) collection: &'static str,
     pub(crate) evidence: &'static str,
     pub(crate) history: &'static str,
@@ -46,7 +48,7 @@ pub(crate) struct Report {
     pub operation: String,
     pub result: String,
     pub exit_code: u8,
-    affected_ids: Vec<String>,
+    pub(crate) affected_ids: Vec<String>,
     pub records: Vec<Record>,
     pub diagnostics: Vec<Diagnostic>,
     baseline_commit: Option<String>,
