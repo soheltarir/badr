@@ -133,6 +133,38 @@ fn codes(result: &Value) -> Vec<&str> {
         .collect()
 }
 
+fn refuses_external_reset(root: &Path, id: &str, path: &str) {
+    let original = fs::read_to_string(root.join(path)).unwrap();
+    let prior = fs::read(root.join(".badr/evidence.jsonl")).unwrap();
+    let changed = original.clone() + "\n# Unauthorized external body change\n";
+    fs::write(root.join(path), &changed).unwrap();
+    let out = run(
+        root,
+        &[
+            "edit",
+            id,
+            "--register-external",
+            "--confirm",
+            "--actor",
+            "Human",
+            "--rationale",
+            "Try reset",
+            "--json",
+        ],
+    );
+    assert_eq!(
+        out.status.code(),
+        Some(2),
+        "{}",
+        String::from_utf8_lossy(&out.stdout)
+    );
+    let result: Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(result["partial_write"]["completed"], json!([]));
+    assert_eq!(fs::read_to_string(root.join(path)).unwrap(), changed);
+    assert_eq!(fs::read(root.join(".badr/evidence.jsonl")).unwrap(), prior);
+    fs::write(root.join(path), original).unwrap();
+}
+
 #[test]
 fn valid_precommit_approval_chain_matches_exact_body_without_writes() {
     let dir = repo();
@@ -307,6 +339,30 @@ fn adr_group_approval_and_replacement_requires_complete_reciprocal_sets() {
     all.push(group.clone());
     ledger(root, &all);
     report(root, 0);
+    git(root, &["checkout", "-b", "feature"]);
+    refuses_external_reset(root, "0001", ADR);
+    refuses_external_reset(root, "0002", second);
+    // Withdrawing the successor cannot reopen either side of completed replacement.
+    let mut withdrawn = group["changes"][1].clone();
+    withdrawn["from"] = json!("approved");
+    withdrawn["to"] = json!("deprecated");
+    let mut with_withdrawal = all.clone();
+    let mut withdrawal = event(root, "withdraw", "deprecate", vec![withdrawn]);
+    withdrawal["decision_gap"] = json!("No replacement selected");
+    withdrawal["existing_code_treatment"] = json!("Retain existing code");
+    with_withdrawal.push(withdrawal);
+    ledger(root, &with_withdrawal);
+    let approved_text = fs::read_to_string(root.join(second)).unwrap();
+    fs::write(
+        root.join(second),
+        approved_text.replace("status: approved", "status: deprecated"),
+    )
+    .unwrap();
+    report(root, 0);
+    refuses_external_reset(root, "0001", ADR);
+    refuses_external_reset(root, "0002", second);
+    fs::write(root.join(second), approved_text).unwrap();
+    ledger(root, &all);
     for bad in [
         json!({"predecessors":["0001"],"successors":["0002"],"complete":false}),
         json!({"predecessors":["0001"],"successors":["0002","0003"],"complete":true}),
@@ -552,6 +608,8 @@ fn brr_activation_withdrawal_and_exact_bytes_follow_retained_approval() {
     );
     ledger(root, &all);
     report(root, 0);
+    git(root, &["checkout", "-b", "feature"]);
+    refuses_external_reset(root, "BRR-ORD-001", BRR_PATH);
     for modified in [
         BRR_BODY.replace('\n', "\r\n"),
         BRR_BODY.to_owned() + "# comment\n",
