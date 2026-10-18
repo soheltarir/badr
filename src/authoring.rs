@@ -184,7 +184,7 @@ pub(crate) fn new(target: &Path, command: Command) -> Report {
     })
 }
 
-fn append(
+pub(super) fn append(
     expected: &BTreeMap<String, Entry>,
     event: &serde_json::Value,
 ) -> Result<Vec<u8>, Failure> {
@@ -200,13 +200,13 @@ pub(super) fn parse(text: &str, path: &str) -> Result<Record, Failure> {
         Ok(Record::Adr(crate::adr::retained(text, path)?))
     }
 }
-fn state(record: &Record) -> (&str, &str) {
+pub(super) fn state(record: &Record) -> (&str, &str) {
     match record {
         Record::Brr(r) => (&r.metadata.status, &r.body),
         Record::Adr(r) => (&r.metadata.status, r.decision_body.as_deref().unwrap_or("")),
     }
 }
-fn change(record: &Record, from: Option<&str>) -> serde_json::Value {
+pub(super) fn change(record: &Record, from: Option<&str>) -> serde_json::Value {
     let (status, body) = state(record);
     let mut value = serde_json::json!({"id":record.id(),"path":record.path(),"from":from,"to":status,"body_sha256":digest(body)});
     match record {

@@ -37,7 +37,10 @@
         "new_adr",
         "propose",
         "edit",
-        "decide"
+        "decide",
+        "link",
+        "unlink",
+        "related"
       ]
     },
     "result": {
@@ -46,6 +49,8 @@
         "edited",
         "proposed",
         "approved",
+        "linked",
+        "unlinked",
         "unchanged",
         "ok",
         "invalid",

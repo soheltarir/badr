@@ -467,3 +467,45 @@ then evidence, with accurate completed/pending paths on failure. Success returns
 `operation: decide`, `result: approved`, affected IDs, baseline/coverage,
 pending commit durability, and a proposed audit commit message. The command
 never stages or commits; Git durability requires the user's later audit commit.
+
+## Ordinary relationships
+
+```sh
+badr link 0001 0002 --confirm --actor "Human" --rationale "Related storage choices"
+badr link 0001 BRR-ORD-001 --confirm --actor "Human" --rationale "Supports cancellation"
+badr unlink 0001 0002 --confirm --actor "Human" --rationale "Connection no longer relevant"
+badr related 0001 --json
+```
+
+`link <source-id> <target-id>` and `unlink <source-id> <target-id>` require actual
+stable IDs, `--confirm`, and nonempty `--actor` and `--rationale`. Agents obtain
+human authorization outside BADR; the command records the caller's declaration.
+Permitted fields are ADR `related_adrs` / `related_business_rules` and BRR
+`related_architecture_decisions`, selected from source and target types. ADR
+identities remain quoted YAML strings. Links are directed; no reciprocal link
+is created. Duplicate links and removal of absent links are errors.
+
+These operations preserve identity, status, applicability, completed supersession
+edges, frozen body bytes, and existing evidence. They never approve or authorize
+replacement. ADR writes update the UTC date and append a dated lifecycle note
+with actor/rationale. Governed metadata is serialized while decision/Gherkin
+bodies and prior notes retain exact bytes. Full collection/history prevalidation,
+intended-state validation, locking, race checks, and shared safe writes apply.
+Missing targets in available collections are errors (exit 2); absent supporting
+collections leave targets unverified (exit 3), with no publication. Other
+unrelated invalidity also blocks mutation.
+
+Successful mutations report `operation: link` / `unlink`, `result: linked` /
+`unlinked`, the changed source ID, completed/pending paths, coverage, pending
+commit durability, and an audit commit message. Publication writes the source
+then appends evidence. A partial failure reports exact paths and retains the
+manual-repair lock; files are atomic individually, not as a group. Nothing is
+staged or committed automatically.
+
+`related <id>` reads the complete collection before following outgoing ordinary
+related references transitively. It includes the starting record, visits each
+reachable record once (cycles are permitted), and returns records in stable ID /
+path order. JSON uses the existing `records` array with explicitly stored related
+fields; human output also prints `source -> target` edges. Supersession edges
+are not traversed. Missing/unverified references retain the validation diagnostics
+and exit status; traversal does not invent a record for an unavailable target.
