@@ -2191,10 +2191,19 @@ fn supersedes_with_qualified_consolidation_and_retains_receipts_and_history() {
     check(lifecycle(root, "activate", &b), 0);
     let successor_before = check(run(root, &["show", &b]), 0)["records"][0].clone();
     let ledger_before = fs::read_to_string(root.join(".badr/evidence.jsonl")).unwrap();
-    check(
+    let result = check(
         replacement(root, "supersede", &["BRR-ORD-001", &a], &[&b]),
         0,
     );
+    let schema: Value = serde_json::from_str(include_str!("../docs/json-schema-v1.json")).unwrap();
+    for field in ["operation", "result"] {
+        assert!(
+            schema["properties"][field]["enum"]
+                .as_array()
+                .unwrap()
+                .contains(&result[field])
+        );
+    }
     let successor = check(run(root, &["show", &b]), 0)["records"][0].clone();
     assert_eq!(
         successor["effective_from"],

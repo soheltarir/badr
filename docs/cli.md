@@ -154,15 +154,15 @@ The same repository state produces the same JSON bytes.
 
 - `schema_version`: integer `1`; breaking contract changes require a new version.
 - `operation`: `init`, `domain_add`, `new_brr`, `new_adr`, `propose`, `edit`, `decide`,
-  `activate`, `reject`, `deprecate`, `retire`, `link`, `unlink`, `related`, `list`,
+  `activate`, `supersede`, `reject`, `deprecate`, `retire`, `link`, `unlink`, `related`, `list`,
   `show`, `validate`, or `arguments`.
 - `success`: true only for exit 0.
-- `result`: `created`/`unchanged` for successful init, `created` for registration/creation, `proposed` for BRR proposal, `edited`/`unchanged` for editing, `approved` for approval, `effective`/`deprecated`/`retired` for BRR lifecycle changes, `rejected`/`deprecated` for ADR withdrawal, `ok` for successful
+- `result`: `created`/`unchanged` for successful init, `created` for registration/creation, `proposed` for BRR proposal, `edited`/`unchanged` for editing, `approved` for approval, `effective`/`deprecated`/`retired`/`superseded` for BRR lifecycle changes, `rejected`/`deprecated` for ADR withdrawal, `ok` for successful
   inspection, otherwise `invalid`, `incomplete`, or `operational_failure`.
 - `exit_code`: the process exit code.
-- `affected_ids`: the created/proposed/edited/approved/activated/withdrawn record ID after complete-change planning;
+- `affected_ids`: the created/proposed/edited/approved/activated/withdrawn/replaced record IDs after complete-change planning;
   empty for inspection, initialization, domain registration, and edit no-ops. Partial failures
-  retain the intended ID; inspect `partial_write` to establish what was written.
+  retain the intended IDs; inspect `partial_write` to establish what was written.
 - `records`: BRR objects ordered by ID then path. Each has `type: "brr"`,
   `id`, `domain`, `status`, `owners`, relationship lists, optional description
   and applicability times, managed-relative `path`, Feature `title`,

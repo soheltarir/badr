@@ -42,6 +42,7 @@
         "unlink",
         "related",
         "activate",
+        "supersede",
         "deprecate",
         "retire",
         "reject"
@@ -56,6 +57,7 @@
         "linked",
         "unlinked",
         "effective",
+        "superseded",
         "deprecated",
         "retired",
         "unchanged",
