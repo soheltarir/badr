@@ -376,14 +376,19 @@ pub(super) fn run(
             if !lock.owned() {
                 return Err(io::Error::other("Writer lock was replaced externally").into());
             }
-            report.result = match operation {
-                "propose" => "proposed",
-                "decide" => "approved",
-                _ => "created",
+            report.result = if writes.is_empty() {
+                "unchanged"
+            } else {
+                match operation {
+                    "edit" => "edited",
+                    "propose" => "proposed",
+                    "decide" => "approved",
+                    _ => "created",
+                }
             }
             .into();
             report.affected_ids = affected_ids;
-            report.proposed_audit_commit_message = Some(message);
+            report.proposed_audit_commit_message = (!writes.is_empty()).then_some(message);
             lock.retain = false;
         }
         Ok(())

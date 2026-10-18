@@ -36,12 +36,14 @@
         "new_brr",
         "new_adr",
         "propose",
+        "edit",
         "decide"
       ]
     },
     "result": {
       "enum": [
         "created",
+        "edited",
         "proposed",
         "approved",
         "unchanged",

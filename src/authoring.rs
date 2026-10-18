@@ -193,7 +193,7 @@ fn append(
     ledger.push(b'\n');
     Ok(ledger)
 }
-fn parse(text: &str, path: &str) -> Result<Record, Failure> {
+pub(super) fn parse(text: &str, path: &str) -> Result<Record, Failure> {
     if path.ends_with(".feature") {
         Ok(Record::Brr(brr::parse(text, path)?))
     } else {
