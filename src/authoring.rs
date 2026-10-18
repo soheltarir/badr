@@ -184,7 +184,7 @@ pub(crate) fn new(target: &Path, command: Command) -> Report {
     })
 }
 
-fn append(
+pub(super) fn append(
     expected: &BTreeMap<String, Entry>,
     event: &serde_json::Value,
 ) -> Result<Vec<u8>, Failure> {
@@ -200,17 +200,19 @@ pub(super) fn parse(text: &str, path: &str) -> Result<Record, Failure> {
         Ok(Record::Adr(crate::adr::retained(text, path)?))
     }
 }
-fn state(record: &Record) -> (&str, &str) {
+pub(super) fn state(record: &Record) -> (&str, &str) {
     match record {
         Record::Brr(r) => (&r.metadata.status, &r.body),
         Record::Adr(r) => (&r.metadata.status, r.decision_body.as_deref().unwrap_or("")),
     }
 }
-fn change(record: &Record, from: Option<&str>) -> serde_json::Value {
+pub(super) fn change(record: &Record, from: Option<&str>) -> serde_json::Value {
     let (status, body) = state(record);
     let mut value = serde_json::json!({"id":record.id(),"path":record.path(),"from":from,"to":status,"body_sha256":digest(body)});
     match record {
         Record::Brr(r) => {
+            value["effective_from"] = serde_json::json!(r.metadata.effective_from);
+            value["effective_until"] = serde_json::json!(r.metadata.effective_until);
             value["related"] = serde_json::json!(r.metadata.related_architecture_decisions);
             value["supersedes"] = serde_json::json!(r.metadata.supersedes);
             value["superseded_by"] = serde_json::json!(r.metadata.superseded_by);
@@ -448,21 +450,45 @@ pub(crate) struct Deprecation {
     authorization: Rejection,
     /// Describe the remaining decision gap, or explicitly state none.
     #[arg(long)]
-    decision_gap: String,
+    decision_gap: Option<String>,
     /// Describe treatment of existing code; BADR does not modify that code.
     #[arg(long)]
-    existing_code_treatment: String,
+    existing_code_treatment: Option<String>,
 }
 
 pub(crate) fn deprecate(target: &Path, deprecation: Deprecation) -> Report {
-    withdraw_adr(
-        target,
-        deprecation.authorization,
-        Some((
-            &deprecation.decision_gap,
-            &deprecation.existing_code_treatment,
-        )),
-    )
+    let Deprecation {
+        authorization,
+        decision_gap,
+        existing_code_treatment,
+    } = deprecation;
+    if authorization.id.starts_with("BRR-") {
+        if decision_gap.is_some() || existing_code_treatment.is_some() {
+            return Report::invalid(
+                "deprecate",
+                "invalid_deprecation_arguments",
+                "--decision-gap and --existing-code-treatment apply only to ADRs".into(),
+            );
+        }
+        return lifecycle(
+            target,
+            "deprecate",
+            Proposal {
+                id: authorization.id,
+                confirm: authorization.confirm,
+                actor: authorization.actor,
+                rationale: authorization.rationale,
+            },
+        );
+    }
+    let (Some(gap), Some(code)) = (decision_gap, existing_code_treatment) else {
+        return Report::invalid(
+            "deprecate",
+            "invalid_deprecation_arguments",
+            "ADR deprecation requires --decision-gap and --existing-code-treatment".into(),
+        );
+    };
+    withdraw_adr(target, authorization, Some((&gap, &code)))
 }
 
 fn withdraw_adr(target: &Path, rejection: Rejection, treatment: Option<(&str, &str)>) -> Report {
@@ -560,6 +586,75 @@ fn withdraw_adr(target: &Path, rejection: Rejection, treatment: Option<(&str, &s
             affected_ids: vec![id.clone()],
             message: format!(
                 "{label} {id}\n\n{declaration}\nBaseline: {}\nEvidence: {}",
+                report.baseline_commit.as_deref().unwrap(),
+                event["event_id"].as_str().unwrap()
+            ),
+        })
+    })
+}
+
+pub(crate) fn lifecycle(target: &Path, operation: &str, choice: Proposal) -> Report {
+    let Proposal {
+        id,
+        confirm,
+        actor,
+        rationale,
+    } = choice;
+    if !confirm || actor.trim().is_empty() || rationale.trim().is_empty() {
+        return Report::invalid(operation, "invalid_lifecycle_arguments",
+            "Require --confirm, nonempty --actor and --rationale. Agents obtain human authorization outside BADR; this records the caller's declaration.".into());
+    }
+    mutation::run(target, operation, |root, report, expected| {
+        let record = report
+            .records
+            .iter()
+            .find(|r| r.id() == id)
+            .ok_or("Record not found")?;
+        let Record::Brr(rule) = record else {
+            return Err("This operation applies only to BRRs".into());
+        };
+        let (from, to, time_key) = match operation {
+            "activate" => ("approved", "effective", "effective_from"),
+            "deprecate" => ("effective", "deprecated", "effective_until"),
+            "retire" => ("effective", "retired", "effective_until"),
+            _ => return Err("Unsupported BRR lifecycle operation".into()),
+        };
+        if rule.metadata.status != from {
+            return Err(format!("{operation} requires a {from} BRR").into());
+        }
+        let mut event = event(
+            root,
+            report,
+            operation,
+            Some((&actor, &rationale)),
+            serde_json::json!({}),
+        )?;
+        let mut metadata = serde_json::to_value(&rule.metadata).map_err(|e| e.to_string())?;
+        metadata["status"] = to.into();
+        metadata[time_key] = event["at"].clone();
+        let mut header = yaml_serde::to_string(&metadata).map_err(|e| e.to_string())?;
+        for key in ["effective_from", "effective_until"] {
+            if let Some(time) = metadata[key].as_str() {
+                header =
+                    header.replace(&format!("{key}: {time}\n"), &format!("{key}: \"{time}\"\n"));
+            }
+        }
+        let text = format!("---\n{header}---\n{}", rule.body);
+        let changed = parse(&text, &rule.path)?;
+        let mut revision = change(&changed, Some(&rule.metadata.status));
+        let ledger = bytes(expected, LEDGER).ok_or("Missing evidence")?;
+        revision["approval_ref"] = evidence::approval_reference(&ledger, &id)?
+            .ok_or("Missing active approval receipt")?
+            .into();
+        event["changes"] = serde_json::json!([revision]);
+        Ok(Plan {
+            writes: vec![
+                (rule.path.clone(), text.into_bytes()),
+                (LEDGER.into(), append(expected, &event)?),
+            ],
+            affected_ids: vec![id.clone()],
+            message: format!(
+                "{operation} {id}\n\nActor: {actor}\nRationale: {rationale}\nBaseline: {}\nEvidence: {}",
                 report.baseline_commit.as_deref().unwrap(),
                 event["event_id"].as_str().unwrap()
             ),

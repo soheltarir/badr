@@ -1639,3 +1639,449 @@ fn adr_deprecation_receipts_require_gap_and_existing_code_treatment() {
     fs::write(&path, original).unwrap();
     check(run(root, &["validate"]), 0);
 }
+
+fn lifecycle(root: &Path, operation: &str, id: &str) -> Output {
+    run(
+        root,
+        &[
+            operation,
+            id,
+            "--confirm",
+            "--actor",
+            "Human",
+            "--rationale",
+            "Explicit policy choice",
+        ],
+    )
+}
+
+fn approved_rule(root: &Path) {
+    check(run(root, ADD), 0);
+    check(
+        run(
+            root,
+            &[
+                "new",
+                "brr",
+                "cancellation",
+                "--domain",
+                "ordering",
+                "--owner",
+                "Product",
+            ],
+        ),
+        0,
+    );
+    let path = root.join(".badr/brrs/domains/ordering/rules/BRR-ORD-001-cancellation.feature");
+    fs::write(
+        &path,
+        fs::read_to_string(&path)
+            .unwrap()
+            .replace("TODO describe", "Describe"),
+    )
+    .unwrap();
+    check(lifecycle(root, "propose", "BRR-ORD-001"), 0);
+    check(decide(root, "BRR-ORD-001", &[]), 0);
+}
+
+#[test]
+fn activates_approved_rule_immediately_with_exact_receipt_and_no_implicit_replacement() {
+    let dir = repo();
+    let root = dir.path();
+    approved_rule(root);
+    let prior = fs::read_to_string(root.join(".badr/evidence.jsonl")).unwrap();
+    let approval: Value = serde_json::from_str(prior.lines().last().unwrap()).unwrap();
+    let before = std::time::SystemTime::now();
+    let result = check(lifecycle(root, "activate", "BRR-ORD-001"), 0);
+    let after = std::time::SystemTime::now();
+    assert_eq!(result["result"], "effective");
+    assert_eq!(result["affected_ids"], serde_json::json!(["BRR-ORD-001"]));
+    assert_eq!(result["pending_commit_durability"], true);
+    let ledger = fs::read_to_string(root.join(".badr/evidence.jsonl")).unwrap();
+    assert!(ledger.starts_with(&prior));
+    let receipt: Value = serde_json::from_str(ledger.lines().last().unwrap()).unwrap();
+    let at = chrono::DateTime::parse_from_rfc3339(receipt["at"].as_str().unwrap()).unwrap();
+    assert!(std::time::SystemTime::from(at) >= before);
+    assert!(std::time::SystemTime::from(at) <= after);
+    assert_eq!(receipt["changes"][0]["effective_from"], receipt["at"]);
+    assert_eq!(receipt["changes"][0]["approval_ref"], approval["event_id"]);
+    assert_eq!(
+        receipt["changes"][0]["body_sha256"],
+        approval["changes"][0]["body_sha256"]
+    );
+    assert_eq!(receipt["actor"], "Human");
+    assert_eq!(receipt["confirmed"], true);
+    let effective = check(run(root, &["list", "--effective"]), 0);
+    assert_eq!(effective["records"].as_array().unwrap().len(), 1);
+    assert_eq!(effective["records"][0]["effective_from"], receipt["at"]);
+    assert!(
+        check(run(root, &["list", "--pending-preview"]), 0)["records"]
+            .as_array()
+            .unwrap()
+            .is_empty()
+    );
+    check(run(root, &["validate"]), 0);
+    commit(root, "Activate approved policy");
+    check(run(root, &["validate"]), 0);
+}
+
+#[test]
+fn withdraws_effective_rules_immediately_and_surfaces_gaps_without_revival() {
+    for operation in ["deprecate", "retire"] {
+        let dir = repo();
+        let root = dir.path();
+        approved_rule(root);
+        check(lifecycle(root, "activate", "BRR-ORD-001"), 0);
+        let original = check(run(root, &["show", "BRR-ORD-001"]), 0)["records"][0].clone();
+        let prior = fs::read_to_string(root.join(".badr/evidence.jsonl")).unwrap();
+        let result = check(lifecycle(root, operation, "BRR-ORD-001"), 0);
+        let status = if operation == "retire" {
+            "retired"
+        } else {
+            "deprecated"
+        };
+        assert_eq!(result["result"], status);
+        assert!(
+            result["diagnostics"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|d| d["code"] == "policy_gap")
+        );
+        let ledger = fs::read_to_string(root.join(".badr/evidence.jsonl")).unwrap();
+        assert!(ledger.starts_with(&prior));
+        let receipt: Value = serde_json::from_str(ledger.lines().last().unwrap()).unwrap();
+        let shown = check(run(root, &["show", "BRR-ORD-001"]), 0);
+        let withdrawn = &shown["records"][0];
+        assert_eq!(withdrawn["status"], status);
+        assert_eq!(withdrawn["effective_from"], original["effective_from"]);
+        assert_eq!(withdrawn["effective_until"], receipt["at"]);
+        assert_eq!(withdrawn["body"], original["body"]);
+        assert_eq!(withdrawn["supersedes"], original["supersedes"]);
+        assert_eq!(withdrawn["currently_effective"], false);
+        assert!(
+            shown["diagnostics"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|d| d["code"] == "policy_gap")
+        );
+        for filter in ["--effective", "--pending-preview"] {
+            assert!(
+                check(run(root, &["list", filter]), 0)["records"]
+                    .as_array()
+                    .unwrap()
+                    .is_empty()
+            );
+        }
+        for illegal in ["activate", "decide", "propose", "deprecate", "retire"] {
+            check(lifecycle(root, illegal, "BRR-ORD-001"), 2);
+        }
+        assert_eq!(
+            fs::read_to_string(root.join(".badr/evidence.jsonl")).unwrap(),
+            ledger
+        );
+        commit(root, "Record full precommit lifecycle");
+        check(run(root, &["validate"]), 0);
+        let output = Command::new(env!("CARGO_BIN_EXE_badr"))
+            .arg("--repo")
+            .arg(root)
+            .args(["show", "BRR-ORD-001"])
+            .output()
+            .unwrap();
+        assert!(output.status.success());
+        assert!(String::from_utf8_lossy(&output.stderr).contains("policy_gap"));
+        assert!(String::from_utf8_lossy(&output.stdout).contains(status));
+    }
+}
+
+#[test]
+fn brr_lifecycle_refuses_illegal_states_adr_targets_and_caller_supplied_times() {
+    let dir = repo();
+    let root = dir.path();
+    check(run(root, &["new", "adr", "storage"]), 0);
+    check(run(root, ADD), 0);
+    check(
+        run(
+            root,
+            &[
+                "new",
+                "brr",
+                "cancellation",
+                "--domain",
+                "ordering",
+                "--owner",
+                "Product",
+            ],
+        ),
+        0,
+    );
+    let path = root.join(".badr/brrs/domains/ordering/rules/BRR-ORD-001-cancellation.feature");
+    for state in ["draft", "proposed", "approved", "effective"] {
+        let before = fs::read(&path).unwrap();
+        let ledger = fs::read(root.join(".badr/evidence.jsonl")).unwrap();
+        for operation in ["activate", "deprecate", "retire"] {
+            for id in ["0001", "BRR-ORD-999"] {
+                check(lifecycle(root, operation, id), 2);
+            }
+            if state == "draft"
+                || state == "proposed"
+                || state == "approved" && operation != "activate"
+                || state == "effective" && operation == "activate"
+            {
+                check(lifecycle(root, operation, "BRR-ORD-001"), 2);
+            }
+            for flags in [
+                vec!["--actor", "Human", "--rationale", "Choice"],
+                vec!["--confirm", "--actor", " ", "--rationale", "Choice"],
+                vec!["--confirm", "--actor", "Human", "--rationale", " "],
+                vec!["--confirm"],
+            ] {
+                let mut args = vec![operation, "BRR-ORD-001"];
+                args.extend(flags);
+                check(run(root, &args), 2);
+            }
+            for (flag, time) in [
+                ("--effective-from", "2000-01-01T00:00:00Z"),
+                ("--effective-until", "2999-01-01T00:00:00Z"),
+                ("--at", "2000-01-01T00:00:00Z"),
+            ] {
+                check(
+                    run(
+                        root,
+                        &[
+                            operation,
+                            "BRR-ORD-001",
+                            "--confirm",
+                            "--actor",
+                            "Human",
+                            "--rationale",
+                            "Choice",
+                            flag,
+                            time,
+                        ],
+                    ),
+                    2,
+                );
+            }
+        }
+        assert_eq!(fs::read(&path).unwrap(), before);
+        assert_eq!(fs::read(root.join(".badr/evidence.jsonl")).unwrap(), ledger);
+        match state {
+            "draft" => {
+                fs::write(
+                    &path,
+                    fs::read_to_string(&path)
+                        .unwrap()
+                        .replace("TODO describe", "Describe"),
+                )
+                .unwrap();
+                check(lifecycle(root, "propose", "BRR-ORD-001"), 0);
+            }
+            "proposed" => {
+                check(decide(root, "BRR-ORD-001", &[]), 0);
+            }
+            "approved" => {
+                check(lifecycle(root, "activate", "BRR-ORD-001"), 0);
+            }
+            _ => {}
+        }
+    }
+}
+
+#[test]
+fn activated_and_withdrawn_bodies_cannot_edit_reset_or_change_applicability_directly() {
+    let dir = repo();
+    let root = dir.path();
+    approved_rule(root);
+    git(root, &["switch", "-c", "local-rule"]);
+    check(lifecycle(root, "activate", "BRR-ORD-001"), 0);
+    let path = root.join(".badr/brrs/domains/ordering/rules/BRR-ORD-001-cancellation.feature");
+    let supplied = root.join("revision.feature");
+    for state in ["effective", "retired"] {
+        let original = fs::read_to_string(&path).unwrap();
+        let ledger = fs::read(root.join(".badr/evidence.jsonl")).unwrap();
+        fs::write(&supplied, original.clone() + "# changed meaning\n").unwrap();
+        check(
+            run(
+                root,
+                &[
+                    "edit",
+                    "BRR-ORD-001",
+                    "--content",
+                    supplied.to_str().unwrap(),
+                ],
+            ),
+            2,
+        );
+        fs::write(
+            &supplied,
+            original.replace(&format!("status: {state}"), "status: proposed"),
+        )
+        .unwrap();
+        check(
+            run(
+                root,
+                &[
+                    "edit",
+                    "BRR-ORD-001",
+                    "--content",
+                    supplied.to_str().unwrap(),
+                ],
+            ),
+            2,
+        );
+        assert_eq!(fs::read_to_string(&path).unwrap(), original);
+        for changed in [
+            original.clone() + "# unauthorized\n",
+            original.replace(&format!("status: {state}"), "status: approved"),
+            original
+                .lines()
+                .map(|line| {
+                    if line.starts_with("effective_from:") {
+                        "effective_from: \"2000-01-01T00:00:00Z\""
+                    } else {
+                        line
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join("\n"),
+        ] {
+            fs::write(&path, changed).unwrap();
+            check(run(root, &["validate"]), 2);
+            check(lifecycle(root, "retire", "BRR-ORD-001"), 2);
+            assert_eq!(fs::read(root.join(".badr/evidence.jsonl")).unwrap(), ledger);
+            fs::write(&path, &original).unwrap();
+        }
+        if state == "effective" {
+            check(lifecycle(root, "retire", "BRR-ORD-001"), 0);
+        }
+    }
+}
+
+#[test]
+fn lifecycle_partial_failures_report_exact_paths_and_retain_repair_lock() {
+    for operation in ["activate", "deprecate", "retire"] {
+        let dir = repo();
+        let root = dir.path();
+        approved_rule(root);
+        if operation != "activate" {
+            check(lifecycle(root, "activate", "BRR-ORD-001"), 0);
+        }
+        let ledger = fs::read(root.join(".badr/evidence.jsonl")).unwrap();
+        fs::write(root.join("unrelated.txt"), "preserve me").unwrap();
+        let out = Command::new(env!("CARGO_BIN_EXE_badr"))
+            .arg("--repo")
+            .arg(root)
+            .arg("--json")
+            .args([
+                operation,
+                "BRR-ORD-001",
+                "--confirm",
+                "--actor",
+                "Human",
+                "--rationale",
+                "Choice",
+            ])
+            .env("BADR_TEST_FAIL_AT", "after_write_0")
+            .output()
+            .unwrap();
+        let result = check(out, 4);
+        assert_eq!(
+            result["partial_write"]["completed"],
+            serde_json::json!([
+                ".badr/brrs/domains/ordering/rules/BRR-ORD-001-cancellation.feature"
+            ])
+        );
+        assert_eq!(
+            result["partial_write"]["not_completed"],
+            serde_json::json!([".badr/evidence.jsonl"])
+        );
+        assert!(result["proposed_audit_commit_message"].is_null());
+        assert!(root.join(".badr.lock").exists());
+        assert_eq!(fs::read(root.join(".badr/evidence.jsonl")).unwrap(), ledger);
+        assert_eq!(
+            fs::read_to_string(root.join("unrelated.txt")).unwrap(),
+            "preserve me"
+        );
+        check(lifecycle(root, operation, "BRR-ORD-001"), 4);
+        check(run(root, &["validate"]), 2);
+    }
+}
+
+#[test]
+fn lifecycle_requires_complete_history_and_valid_whole_collection_without_writes() {
+    let dir = repo();
+    let root = dir.path();
+    approved_rule(root);
+    let config = fs::read(root.join(".badr/config.yaml")).unwrap();
+    let path = root.join(".badr/brrs/domains/ordering/rules/BRR-ORD-001-cancellation.feature");
+    for operation in ["activate", "deprecate", "retire"] {
+        let record = fs::read(&path).unwrap();
+        let ledger = fs::read(root.join(".badr/evidence.jsonl")).unwrap();
+        fs::write(
+            root.join(".badr/config.yaml"),
+            "version: 1\nbaseline_branch: missing\n",
+        )
+        .unwrap();
+        let result = check(lifecycle(root, operation, "BRR-ORD-001"), 3);
+        assert!(
+            result["partial_write"]["completed"]
+                .as_array()
+                .unwrap()
+                .is_empty()
+        );
+        fs::write(root.join(".badr/config.yaml"), &config).unwrap();
+        fs::create_dir_all(root.join(".badr/adrs")).unwrap();
+        fs::write(
+            root.join(".badr/adrs/0001-invalid.md"),
+            "invalid unrelated ADR",
+        )
+        .unwrap();
+        check(lifecycle(root, operation, "BRR-ORD-001"), 2);
+        fs::remove_file(root.join(".badr/adrs/0001-invalid.md")).unwrap();
+        assert_eq!(fs::read(&path).unwrap(), record);
+        assert_eq!(fs::read(root.join(".badr/evidence.jsonl")).unwrap(), ledger);
+        assert!(!root.join(".badr.lock").exists());
+        if operation == "activate" {
+            check(lifecycle(root, "activate", "BRR-ORD-001"), 0);
+        }
+    }
+}
+
+#[test]
+fn shared_deprecation_preserves_brr_calls_and_rejects_adr_only_declarations() {
+    let dir = repo();
+    let root = dir.path();
+    approved_rule(root);
+    check(lifecycle(root, "activate", "BRR-ORD-001"), 0);
+    let path = root.join(".badr/brrs/domains/ordering/rules/BRR-ORD-001-cancellation.feature");
+    let before = fs::read(&path).unwrap();
+    let ledger = fs::read(root.join(".badr/evidence.jsonl")).unwrap();
+    for extra in [
+        vec!["--decision-gap", "None"],
+        vec!["--existing-code-treatment", "Retain"],
+        vec![
+            "--decision-gap",
+            "None",
+            "--existing-code-treatment",
+            "Retain",
+        ],
+    ] {
+        let mut args = vec![
+            "deprecate",
+            "BRR-ORD-001",
+            "--confirm",
+            "--actor",
+            "Human",
+            "--rationale",
+            "Withdraw policy",
+        ];
+        args.extend(extra);
+        check(run(root, &args), 2);
+        assert_eq!(fs::read(&path).unwrap(), before);
+        assert_eq!(fs::read(root.join(".badr/evidence.jsonl")).unwrap(), ledger);
+    }
+    check(lifecycle(root, "deprecate", "BRR-ORD-001"), 0);
+    check(run(root, &["validate"]), 0);
+}

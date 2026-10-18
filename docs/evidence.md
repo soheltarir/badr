@@ -7,7 +7,8 @@ malformed hashes/times/IDs, duplicate event IDs, and duplicate affected numeric
 identities are errors. [The event schema](evidence-schema-v1.json) describes the
 wire shape; replay adds state, relationship, and history constraints.
 
-Domain registration, BRR proposal, explicit approval, and ADR rejection/deprecation create governed events;
+Domain registration, BRR proposal, explicit approval, ADR rejection/deprecation,
+and immediate BRR activation/deprecation/retirement create governed events;
 record creation creates allocation events. External-edit registration, evidence repair,
 and the remaining lifecycle commands remain unavailable.
 Missing evidence cannot be replaced by a successful syntax check. Do not invent

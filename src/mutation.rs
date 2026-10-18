@@ -384,7 +384,11 @@ pub(super) fn run(
                     "propose" => "proposed",
                     "decide" => "approved",
                     "reject" => "rejected",
+                    "link" => "linked",
+                    "unlink" => "unlinked",
+                    "activate" => "effective",
                     "deprecate" => "deprecated",
+                    "retire" => "retired",
                     _ => "created",
                 }
             }

@@ -760,10 +760,45 @@ fn brr_group_activation_replaces_only_after_prior_approval_and_compatibility_con
     bad[end]["replacement"]["compatibility_confirmed"] = json!(false);
     ledger(root, &bad);
     report(root, 2);
-    let mut bad = all;
+    let mut bad = all.clone();
     bad[end]["changes"][0]["effective_from"] = json!("2019-01-01T00:00:00Z");
     ledger(root, &bad);
     report(root, 2);
+    ledger(root, &all);
+    let predecessor_bytes = fs::read(root.join(BRR_PATH)).unwrap();
+    let out = run(
+        root,
+        &[
+            "retire",
+            "BRR-ORD-002",
+            "--confirm",
+            "--actor",
+            "Human",
+            "--rationale",
+            "Withdraw successor",
+            "--json",
+        ],
+    );
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stdout)
+    );
+    let result: Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert!(codes(&result).contains(&"policy_gap"));
+    assert_eq!(fs::read(root.join(BRR_PATH)).unwrap(), predecessor_bytes);
+    let effective = run(root, &["list", "--effective", "--json"]);
+    assert!(effective.status.success());
+    let effective: Value = serde_json::from_slice(&effective.stdout).unwrap();
+    assert!(effective["records"].as_array().unwrap().is_empty());
+    let withdrawn: Value =
+        serde_json::from_slice(&run(root, &["show", "BRR-ORD-002", "--json"]).stdout).unwrap();
+    assert_eq!(
+        withdrawn["records"][0]["supersedes"],
+        json!(["BRR-ORD-001"])
+    );
+    assert_eq!(withdrawn["records"][0]["status"], "retired");
+    report(root, 0);
 }
 
 #[cfg(unix)]

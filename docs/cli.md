@@ -3,8 +3,8 @@
 BADR implements initialization and read-only BRR/ADR inspection and structural
 validation, operation-evidence replay, exact frozen-body checks, and retained
 Git revision checks, governed domain registration, record creation, BRR proposal,
-ordinary record editing, explicit approval, and ADR rejection/deprecation. Activation, replacement, and the
-remaining lifecycle commands remain unavailable.
+ordinary record editing, explicit approval, ADR rejection/deprecation, and immediate BRR activation/withdrawal.
+Replacement and the remaining lifecycle commands remain unavailable.
 See the [versioned evidence contract](evidence.md) for the event schema and
 coverage limits.
 
@@ -152,13 +152,14 @@ there are no timestamps or random operation identifiers in these read reports.
 The same repository state produces the same JSON bytes.
 
 - `schema_version`: integer `1`; breaking contract changes require a new version.
-- `operation`: `init`, `domain_add`, `new_brr`, `new_adr`, `propose`, `edit`, `list`,
-  `show`, `validate`, `decide`, `reject`, `deprecate`, or `arguments`.
+- `operation`: `init`, `domain_add`, `new_brr`, `new_adr`, `propose`, `edit`, `decide`,
+  `activate`, `reject`, `deprecate`, `retire`, `link`, `unlink`, `related`, `list`,
+  `show`, `validate`, or `arguments`.
 - `success`: true only for exit 0.
-- `result`: `created`/`unchanged` for successful init, `created` for registration/creation, `proposed` for BRR proposal, `edited`/`unchanged` for editing, `ok` for successful
-  inspection, `approved` for approval, `rejected`/`deprecated` for ADR withdrawal, otherwise `invalid`, `incomplete`, or `operational_failure`.
+- `result`: `created`/`unchanged` for successful init, `created` for registration/creation, `proposed` for BRR proposal, `edited`/`unchanged` for editing, `approved` for approval, `effective`/`deprecated`/`retired` for BRR lifecycle changes, `rejected`/`deprecated` for ADR withdrawal, `ok` for successful
+  inspection, otherwise `invalid`, `incomplete`, or `operational_failure`.
 - `exit_code`: the process exit code.
-- `affected_ids`: the created/proposed/edited/approved/withdrawn record ID after complete-change planning;
+- `affected_ids`: the created/proposed/edited/approved/activated/withdrawn record ID after complete-change planning;
   empty for inspection, initialization, domain registration, and edit no-ops. Partial failures
   retain the intended ID; inspect `partial_write` to establish what was written.
 - `records`: BRR objects ordered by ID then path. Each has `type: "brr"`,
@@ -468,6 +469,82 @@ then evidence, with accurate completed/pending paths on failure. Success returns
 pending commit durability, and a proposed audit commit message. The command
 never stages or commits; Git durability requires the user's later audit commit.
 
+## Ordinary relationships
+
+```sh
+badr link 0001 0002 --confirm --actor "Human" --rationale "Related storage choices"
+badr link 0001 BRR-ORD-001 --confirm --actor "Human" --rationale "Supports cancellation"
+badr unlink 0001 0002 --confirm --actor "Human" --rationale "Connection no longer relevant"
+badr related 0001 --json
+```
+
+`link <source-id> <target-id>` and `unlink <source-id> <target-id>` require actual
+stable IDs, `--confirm`, and nonempty `--actor` and `--rationale`. Agents obtain
+human authorization outside BADR; the command records the caller's declaration.
+Permitted fields are ADR `related_adrs` / `related_business_rules` and BRR
+`related_architecture_decisions`, selected from source and target types. ADR
+identities remain quoted YAML strings. Links are directed; no reciprocal link
+is created. Duplicate links and removal of absent links are errors.
+
+These operations preserve identity, status, applicability, completed supersession
+edges, frozen body bytes, and existing evidence. They never approve or authorize
+replacement. ADR writes update the UTC date and append a dated lifecycle note
+with actor/rationale. Governed metadata is serialized while decision/Gherkin
+bodies and prior notes retain exact bytes. Full collection/history prevalidation,
+intended-state validation, locking, race checks, and shared safe writes apply.
+Missing targets in available collections are errors (exit 2); absent supporting
+collections leave targets unverified (exit 3), with no publication. Other
+unrelated invalidity also blocks mutation.
+
+Successful mutations report `operation: link` / `unlink`, `result: linked` /
+`unlinked`, the changed source ID, completed/pending paths, coverage, pending
+commit durability, and an audit commit message. Publication writes the source
+then appends evidence. A partial failure reports exact paths and retains the
+manual-repair lock; files are atomic individually, not as a group. Nothing is
+staged or committed automatically.
+
+`related <id>` reads the complete collection before following outgoing ordinary
+related references transitively. It includes the starting record, visits each
+reachable record once (cycles are permitted), and returns records in stable ID /
+path order. JSON uses the existing `records` array with explicitly stored related
+fields; human output also prints `source -> target` edges. Supersession edges
+are not traversed. Missing/unverified references retain the validation diagnostics
+and exit status; traversal does not invent a record for an unavailable target.
+
+## Immediate BRR activation and withdrawal
+
+```sh
+badr activate BRR-ORD-001 --confirm --actor "Human" --rationale "Apply reviewed policy" --json
+badr deprecate BRR-ORD-001 --confirm --actor "Human" --rationale "Withdraw this policy"
+badr retire BRR-ORD-001 --confirm --actor "Human" --rationale "End this policy" --json
+```
+
+`activate` accepts only an approved BRR and sets `effective_from` to the actual
+UTC operation time. Approval alone remains inactive. `deprecate` and `retire`
+accept only effective BRRs, preserve activation time, and set `effective_until`
+to the actual withdrawal time. Timestamps are quoted, include seconds and an
+explicit UTC timezone, and may include fractional seconds. There are no
+scheduling/backdating arguments. These commands reject ADRs and illegal or
+repeated transitions. All require `--confirm`, nonempty `--actor` and `--rationale`;
+agents obtain human authorization outside BADR, which records a declaration.
+
+Each event preserves the active approval reference, exact frozen body digest,
+related/replacement links, and earlier receipts. Effective and withdrawn bodies
+remain frozen; activation permanently disqualifies an approval reset. Withdrawn
+records cannot reopen. Shared whole-collection, baseline/history, safe-write,
+lock, and partial-failure rules apply. Publication order is record then evidence.
+Success returns `result: effective`, `deprecated`, or `retired`, the affected ID,
+coverage/baseline, pending audit durability, and a proposed audit commit message.
+BADR never stages or commits.
+
+Withdrawal selects no replacement and revives no predecessor. Inspection and
+successful withdrawal include an advisory diagnostic `policy_gap` for each
+deprecated/retired BRR, identifying the record and asking humans to resolve any
+policy gap explicitly. This notice does not fail validation, prove that a gap
+exists, or assess code conformance. It remains visible when filtering records;
+there is no inferred semantic coverage or gap-resolution workflow. Current-effective
+and pending-preview selections immediately exclude withdrawn BRRs.
+
 ## Reject or deprecate an ADR
 
 ```sh
@@ -478,11 +555,12 @@ badr deprecate 0002 --confirm --actor "Human" --rationale "Direction no longer s
 ```
 
 `reject` accepts only proposed ADRs and returns `operation: reject`,
-`result: rejected`. `deprecate` currently accepts only approved ADRs and returns
+`result: rejected`. For ADRs, `deprecate` accepts only approved records and returns
 `operation: deprecate`, `result: deprecated`. Both require explicit `--confirm`,
-nonempty `--actor` and `--rationale`. Deprecation also requires nonempty
+nonempty `--actor` and `--rationale`. ADR deprecation also requires nonempty
 `--decision-gap` and `--existing-code-treatment`; explicitly state `None` when
-there is no decision gap. Agents obtain human authorization outside BADR;
+there is no decision gap. The record ID selects BRR or ADR behavior. BRR deprecation
+keeps its existing flags and rejects these ADR-only declarations. Agents obtain human authorization outside BADR;
 the command records the declaration without authenticating the actor.
 
 Rejection remains non-authoritative. Deprecation immediately withdraws direction

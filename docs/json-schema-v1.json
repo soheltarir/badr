@@ -38,8 +38,13 @@
         "propose",
         "edit",
         "decide",
-        "reject",
-        "deprecate"
+        "link",
+        "unlink",
+        "related",
+        "activate",
+        "deprecate",
+        "retire",
+        "reject"
       ]
     },
     "result": {
@@ -48,13 +53,17 @@
         "edited",
         "proposed",
         "approved",
+        "linked",
+        "unlinked",
+        "effective",
+        "deprecated",
+        "retired",
         "unchanged",
         "ok",
         "invalid",
         "incomplete",
         "operational_failure",
-        "rejected",
-        "deprecated"
+        "rejected"
       ]
     },
     "exit_code": {

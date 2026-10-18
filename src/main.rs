@@ -46,10 +46,20 @@ enum Operation {
     Propose(repository::authoring::Proposal),
     /// Approve after human authorization outside BADR; records a declaration, not authentication.
     Decide(repository::authoring::Approval),
+    /// Add a directed ordinary related reference with explicit authorization.
+    Link(repository::relationships::Link),
+    /// Remove a directed ordinary related reference with explicit authorization.
+    Unlink(repository::relationships::Link),
+    /// Traverse outgoing ordinary related references; cycles are visited once.
+    Related { id: String },
+    /// Immediately activate an approved BRR through explicit human authorization.
+    Activate(repository::authoring::Proposal),
+    /// Deprecate an effective BRR or approved ADR with explicit authorization.
+    Deprecate(repository::authoring::Deprecation),
     /// Reject a proposed ADR through explicit human authorization.
     Reject(repository::authoring::Rejection),
-    /// Withdraw an approved ADR direction and record treatment of existing code.
-    Deprecate(repository::authoring::Deprecation),
+    /// Immediately retire an effective BRR, exposing any policy gap.
+    Retire(repository::authoring::Proposal),
     /// Inspect managed records with explicit applicability selection.
     List {
         #[command(flatten)]
@@ -86,11 +96,16 @@ fn main() -> ExitCode {
         }
     };
     let report = match cli.command {
-        Operation::Edit(edit) => repository::editing::run(&cli.repo, edit),
-        Operation::Deprecate(deprecation) => {
-            repository::authoring::deprecate(&cli.repo, deprecation)
+        Operation::Link(link) => repository::relationships::run(&cli.repo, link, false),
+        Operation::Unlink(link) => repository::relationships::run(&cli.repo, link, true),
+        Operation::Related { id } => repository::relationships::related(&cli.repo, &id),
+        Operation::Activate(choice) => {
+            repository::authoring::lifecycle(&cli.repo, "activate", choice)
         }
+        Operation::Deprecate(choice) => repository::authoring::deprecate(&cli.repo, choice),
+        Operation::Retire(choice) => repository::authoring::lifecycle(&cli.repo, "retire", choice),
         Operation::Reject(rejection) => repository::authoring::reject(&cli.repo, rejection),
+        Operation::Edit(edit) => repository::editing::run(&cli.repo, edit),
         Operation::Decide(approval) => repository::authoring::decide(&cli.repo, approval),
         Operation::Propose(proposal) => repository::authoring::propose(&cli.repo, proposal),
         Operation::New { command } => repository::authoring::new(&cli.repo, command),
@@ -130,8 +145,12 @@ fn emit(report: Report, json: bool) -> ExitCode {
                 | "propose"
                 | "edit"
                 | "decide"
-                | "reject"
+                | "link"
+                | "unlink"
+                | "activate"
                 | "deprecate"
+                | "retire"
+                | "reject"
         ) {
             output.push_str(&format!(
                 "Completed writes: {:?}\nNot completed: {:?}\nPending audit commit: {:?}\n",
@@ -154,6 +173,11 @@ fn emit(report: Report, json: bool) -> ExitCode {
             }
         }
         for record in &report.records {
+            if report.operation == "related" {
+                for target in repository::relationships::targets(record) {
+                    output.push_str(&format!("{} -> {target}\n", record.id()));
+                }
+            }
             match record {
                 repository::Record::Brr(record) => {
                     output.push_str(&format!(
