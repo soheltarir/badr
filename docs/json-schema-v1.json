@@ -37,7 +37,14 @@
         "new_adr",
         "propose",
         "edit",
-        "decide"
+        "decide",
+        "link",
+        "unlink",
+        "related",
+        "activate",
+        "deprecate",
+        "retire",
+        "reject"
       ]
     },
     "result": {
@@ -46,11 +53,17 @@
         "edited",
         "proposed",
         "approved",
+        "linked",
+        "unlinked",
+        "effective",
+        "deprecated",
+        "retired",
         "unchanged",
         "ok",
         "invalid",
         "incomplete",
-        "operational_failure"
+        "operational_failure",
+        "rejected"
       ]
     },
     "exit_code": {

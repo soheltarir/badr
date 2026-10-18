@@ -10,6 +10,8 @@ pub(crate) mod editing;
 mod evidence;
 #[path = "mutation.rs"]
 mod mutation;
+#[path = "relationships.rs"]
+pub(crate) mod relationships;
 
 use serde::{Deserialize, Serialize};
 use std::{
@@ -64,7 +66,7 @@ pub(crate) enum Record {
     Adr(crate::adr::Record),
 }
 impl Record {
-    fn id(&self) -> &str {
+    pub(crate) fn id(&self) -> &str {
         match self {
             Self::Brr(r) => &r.metadata.id,
             Self::Adr(r) => &r.metadata.id,
@@ -537,6 +539,21 @@ fn inspect_collection_for_reset(
         .records
         .sort_by(|a, b| a.id().cmp(b.id()).then(a.path().cmp(b.path())));
     evidence::inspect(root, history_root, report, reset_target);
+    report.diagnostics.retain(|d| d.code != "policy_gap");
+    for record in &report.records {
+        if let Record::Brr(rule) = record {
+            if matches!(rule.metadata.status.as_str(), "deprecated" | "retired") {
+                report.diagnostics.push(Diagnostic {
+                    code: "policy_gap".into(),
+                    message: "This rule no longer applies. Review any policy gap for explicit human resolution; no replacement is selected and no predecessor is revived. Code conformance is not assessed.".into(),
+                    path: Some(rule.path.clone()),
+                    record_id: Some(rule.metadata.id.clone()),
+                    stored_file_line: None,
+                    body_line: None,
+                });
+            }
+        }
+    }
     if report.operation != "show" {
         for record in &mut report.records {
             if let Record::Adr(record) = record {

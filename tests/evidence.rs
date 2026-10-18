@@ -347,7 +347,10 @@ fn adr_group_approval_and_replacement_requires_complete_reciprocal_sets() {
     withdrawn["from"] = json!("approved");
     withdrawn["to"] = json!("deprecated");
     let mut with_withdrawal = all.clone();
-    with_withdrawal.push(event(root, "withdraw", "deprecate", vec![withdrawn]));
+    let mut withdrawal = event(root, "withdraw", "deprecate", vec![withdrawn]);
+    withdrawal["decision_gap"] = json!("No replacement selected");
+    withdrawal["existing_code_treatment"] = json!("Retain existing code");
+    with_withdrawal.push(withdrawal);
     ledger(root, &with_withdrawal);
     let approved_text = fs::read_to_string(root.join(second)).unwrap();
     fs::write(
@@ -740,7 +743,10 @@ fn legitimate_note_append_preserves_the_approved_decision_digest() {
     deprecated["from"] = json!("approved");
     deprecated["to"] = json!("deprecated");
     deprecated["notes_sha256"] = json!(digest(new_notes.as_bytes()));
-    all.push(event(root, "deprecate", "deprecate", vec![deprecated]));
+    let mut withdrawal = event(root, "deprecate", "deprecate", vec![deprecated]);
+    withdrawal["decision_gap"] = json!("No replacement selected");
+    withdrawal["existing_code_treatment"] = json!("Retain existing code");
+    all.push(withdrawal);
     write_adr(root, "deprecated", BODY, &new_notes, "");
     ledger(root, &all);
     report(root, 0);
@@ -812,10 +818,45 @@ fn brr_group_activation_replaces_only_after_prior_approval_and_compatibility_con
     bad[end]["replacement"]["compatibility_confirmed"] = json!(false);
     ledger(root, &bad);
     report(root, 2);
-    let mut bad = all;
+    let mut bad = all.clone();
     bad[end]["changes"][0]["effective_from"] = json!("2019-01-01T00:00:00Z");
     ledger(root, &bad);
     report(root, 2);
+    ledger(root, &all);
+    let predecessor_bytes = fs::read(root.join(BRR_PATH)).unwrap();
+    let out = run(
+        root,
+        &[
+            "retire",
+            "BRR-ORD-002",
+            "--confirm",
+            "--actor",
+            "Human",
+            "--rationale",
+            "Withdraw successor",
+            "--json",
+        ],
+    );
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stdout)
+    );
+    let result: Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert!(codes(&result).contains(&"policy_gap"));
+    assert_eq!(fs::read(root.join(BRR_PATH)).unwrap(), predecessor_bytes);
+    let effective = run(root, &["list", "--effective", "--json"]);
+    assert!(effective.status.success());
+    let effective: Value = serde_json::from_slice(&effective.stdout).unwrap();
+    assert!(effective["records"].as_array().unwrap().is_empty());
+    let withdrawn: Value =
+        serde_json::from_slice(&run(root, &["show", "BRR-ORD-002", "--json"]).stdout).unwrap();
+    assert_eq!(
+        withdrawn["records"][0]["supersedes"],
+        json!(["BRR-ORD-001"])
+    );
+    assert_eq!(withdrawn["records"][0]["status"], "retired");
+    report(root, 0);
 }
 
 #[cfg(unix)]

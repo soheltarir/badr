@@ -113,6 +113,18 @@
         "null"
       ],
       "description": "For decide, explicit declaration that applicable content and gaps were reviewed and resolved."
+    },
+    "decision_gap": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "existing_code_treatment": {
+      "type": [
+        "string",
+        "null"
+      ]
     }
   },
   "$defs": {
@@ -323,6 +335,40 @@
           },
           "reviewed": {
             "const": true
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "operation": {
+            "const": "deprecate"
+          },
+          "changes": {
+            "contains": {
+              "properties": {
+                "id": {
+                  "pattern": "^[0-9]+$"
+                }
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "decision_gap",
+          "existing_code_treatment"
+        ],
+        "properties": {
+          "decision_gap": {
+            "type": "string",
+            "minLength": 1
+          },
+          "existing_code_treatment": {
+            "type": "string",
+            "minLength": 1
           }
         }
       }

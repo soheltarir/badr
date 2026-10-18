@@ -23,6 +23,8 @@ struct Event {
     rationale: Option<String>,
     confirmed: Option<bool>,
     reviewed: Option<bool>,
+    decision_gap: Option<String>,
+    existing_code_treatment: Option<String>,
     replacement: Option<Replacement>,
     changes: Vec<Change>,
     domain: Option<Domain>,
@@ -271,6 +273,19 @@ fn replay(events: &[Event], available: [bool; 2], report: &mut Report) -> BTreeM
             }
             if event.operation == "decide" && event.reviewed != Some(true) {
                 return Err("Approval requires a declaration that applicable content and gaps were reviewed and resolved".into());
+            }
+            if event.operation == "deprecate"
+                && event.changes.iter().any(|c| !c.id.starts_with("BRR-"))
+                && (event
+                    .decision_gap
+                    .as_ref()
+                    .is_none_or(|s| s.trim().is_empty())
+                    || event
+                        .existing_code_treatment
+                        .as_ref()
+                        .is_none_or(|s| s.trim().is_empty()))
+            {
+                return Err("ADR deprecation requires a decision gap declaration and treatment of existing code".into());
             }
             if event.operation == "domain_add" {
                 let domain = event
@@ -1464,4 +1479,22 @@ pub(super) fn reset_approval(
         .ok_or("Missing active approval")?
         .0
         .clone())
+}
+
+pub(super) fn approval_reference(
+    ledger: &[u8],
+    id: &str,
+) -> Result<Option<String>, super::Failure> {
+    let text = std::str::from_utf8(ledger).map_err(|e| e.to_string())?;
+    for line in text.lines().rev() {
+        let event: Event = serde_json::from_str(line).map_err(|e| e.to_string())?;
+        if let Some(change) = event.changes.into_iter().find(|c| c.id == id) {
+            return Ok(if event.operation == "edit" {
+                None
+            } else {
+                change.approval_ref
+            });
+        }
+    }
+    Err("Record has no retained evidence".into())
 }

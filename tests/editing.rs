@@ -889,6 +889,39 @@ fn brr_reset_and_external_registration_keep_body_bytes_and_inactive_state() {
     register(root, "BRR-ORD-001", 0);
     check(run(root, &["validate"]), 0);
     decide(root, "BRR-ORD-001");
+    check(
+        run(
+            root,
+            &[
+                "activate",
+                "BRR-ORD-001",
+                "--confirm",
+                "--actor",
+                "Human",
+                "--rationale",
+                "Apply revised policy",
+            ],
+        ),
+        0,
+    );
+    check(
+        run(
+            root,
+            &[
+                "retire",
+                "BRR-ORD-001",
+                "--confirm",
+                "--actor",
+                "Human",
+                "--rationale",
+                "Withdraw policy",
+            ],
+        ),
+        0,
+    );
+    let text = fs::read_to_string(root.join(path)).unwrap() + "\n# Ineligible external change\n";
+    fs::write(root.join(path), text).unwrap();
+    register(root, "BRR-ORD-001", 2);
 }
 
 #[test]
@@ -1062,4 +1095,64 @@ fn baseline_tag_name_collision_cannot_make_baseline_eligible() {
     decide(root, "0001");
     let text = fs::read_to_string(root.join(ADR)).unwrap() + "\nChanged reasoning.\n";
     reset(root, "0001", &text, 2);
+}
+
+#[test]
+fn reset_composes_with_relationship_updates_and_adr_rejection() {
+    let dir = approved_feature();
+    let root = dir.path();
+    check(run(root, &["new", "adr", "other-choice"]), 0);
+    check(
+        run(
+            root,
+            &[
+                "link",
+                "0001",
+                "0002",
+                "--confirm",
+                "--actor",
+                "Human",
+                "--rationale",
+                "Related choice",
+            ],
+        ),
+        0,
+    );
+    let original = fs::read_to_string(root.join(ADR)).unwrap();
+    let revised = original.replace("Reviewed:", "Clarified:");
+    assert_ne!(revised, original);
+    reset(root, "0001", &revised, 0);
+    // A reset has no active approval even after later relationship events.
+    check(
+        run(
+            root,
+            &[
+                "unlink",
+                "0001",
+                "0002",
+                "--confirm",
+                "--actor",
+                "Human",
+                "--rationale",
+                "Remove relation",
+            ],
+        ),
+        0,
+    );
+    check(
+        run(
+            root,
+            &[
+                "reject",
+                "0001",
+                "--confirm",
+                "--actor",
+                "Human",
+                "--rationale",
+                "Reject revised proposal",
+            ],
+        ),
+        0,
+    );
+    check(run(root, &["validate"]), 0);
 }
