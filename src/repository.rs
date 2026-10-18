@@ -383,6 +383,14 @@ fn inspect_collection(root: &Path, report: &mut Report) {
     inspect_collection_at(root, root, report);
 }
 fn inspect_collection_at(root: &Path, history_root: &Path, report: &mut Report) {
+    inspect_collection_for_reset(root, history_root, report, None);
+}
+fn inspect_collection_for_reset(
+    root: &Path,
+    history_root: &Path,
+    report: &mut Report,
+    reset_target: Option<&str>,
+) {
     fn walk(
         root: &Path,
         path: &Path,
@@ -528,7 +536,7 @@ fn inspect_collection_at(root: &Path, history_root: &Path, report: &mut Report) 
     report
         .records
         .sort_by(|a, b| a.id().cmp(b.id()).then(a.path().cmp(b.path())));
-    evidence::inspect(root, history_root, report);
+    evidence::inspect(root, history_root, report, reset_target);
     if report.operation != "show" {
         for record in &mut report.records {
             if let Record::Adr(record) = record {

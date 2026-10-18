@@ -577,3 +577,478 @@ fn external_changes_during_planning_are_preserved_and_block_publication() {
     assert_eq!(fs::read_to_string(root.join(ADR)).unwrap(), external);
     assert!(!root.join(".badr.lock").exists());
 }
+
+fn decide(root: &Path, id: &str) {
+    if id == "0001" {
+        let text = fs::read_to_string(root.join(ADR))
+            .unwrap()
+            .replace("TODO:", "Reviewed:");
+        fs::write(root.join(ADR), text).unwrap();
+    }
+    check(
+        run(
+            root,
+            &[
+                "decide",
+                id,
+                "--confirm",
+                "--reviewed",
+                "--actor",
+                "Human",
+                "--rationale",
+                "Reviewed",
+            ],
+        ),
+        0,
+    );
+}
+fn reset(root: &Path, id: &str, text: &str, exit: i32) -> Value {
+    let input = tempfile::NamedTempFile::new().unwrap();
+    fs::write(input.path(), text).unwrap();
+    check(
+        run(
+            root,
+            &[
+                "edit",
+                id,
+                "--content",
+                input.path().to_str().unwrap(),
+                "--confirm",
+                "--actor",
+                "Human",
+                "--rationale",
+                "Revise branch-local reasoning",
+            ],
+        ),
+        exit,
+    )
+}
+
+#[test]
+fn branch_local_reset_retains_receipts_and_requires_reapproval() {
+    let dir = repo();
+    let root = dir.path();
+    git(root, &["switch", "-c", "feature"]);
+    check(run(root, &["new", "adr", "storage-choice"]), 0);
+    decide(root, "0001");
+    let ledger = fs::read_to_string(root.join(".badr/evidence.jsonl")).unwrap();
+    let prior: Value = serde_json::from_str(ledger.lines().last().unwrap()).unwrap();
+    commit_records(root);
+    let text = fs::read_to_string(root.join(ADR)).unwrap();
+    assert_eq!(reset(root, "0001", &text, 0)["result"], "unchanged");
+    assert_eq!(
+        fs::read_to_string(root.join(".badr/evidence.jsonl")).unwrap(),
+        ledger
+    );
+    let changed = text + "\nRevised reasoning.\n";
+    let result = reset(root, "0001", &changed, 0);
+    assert_eq!(result["pending_commit_durability"], true);
+    assert!(
+        fs::read_to_string(root.join(ADR))
+            .unwrap()
+            .contains("status: proposed")
+    );
+    let after = fs::read_to_string(root.join(".badr/evidence.jsonl")).unwrap();
+    assert!(after.starts_with(&ledger));
+    let event: Value = serde_json::from_str(after.lines().last().unwrap()).unwrap();
+    assert_eq!(event["operation"], "edit");
+    assert_eq!(event["changes"][0]["approval_ref"], prior["event_id"]);
+    assert_eq!(event["confirmed"], true);
+    commit_records(root);
+    check(run(root, &["validate"]), 0);
+    decide(root, "0001");
+    let reapproved = fs::read_to_string(root.join(".badr/evidence.jsonl")).unwrap();
+    assert!(reapproved.starts_with(&after));
+    check(run(root, &["validate"]), 0);
+}
+
+fn commit_records(root: &Path) {
+    git(root, &["add", ".badr"]);
+    git(
+        root,
+        &[
+            "-c",
+            "user.name=Test",
+            "-c",
+            "user.email=test@example.invalid",
+            "commit",
+            "-m",
+            "Records",
+        ],
+    );
+}
+fn approved_feature() -> TempDir {
+    let dir = repo();
+    git(dir.path(), &["switch", "-c", "feature"]);
+    check(run(dir.path(), &["new", "adr", "storage-choice"]), 0);
+    decide(dir.path(), "0001");
+    dir
+}
+fn register(root: &Path, id: &str, exit: i32) -> Value {
+    check(
+        run(
+            root,
+            &[
+                "edit",
+                id,
+                "--register-external",
+                "--confirm",
+                "--actor",
+                "Human",
+                "--rationale",
+                "Register external revision",
+            ],
+        ),
+        exit,
+    )
+}
+
+#[test]
+fn external_registration_resolves_only_target_body_and_preserves_prior_receipts() {
+    let dir = approved_feature();
+    let root = dir.path();
+    register(root, "0001", 2); // No digest mismatch to register.
+    let original = fs::read_to_string(root.join(ADR)).unwrap();
+    let ledger = fs::read_to_string(root.join(".badr/evidence.jsonl")).unwrap();
+    let changed = original.clone() + "\nExternal reasoning change.\n";
+    fs::write(root.join(ADR), &changed).unwrap();
+    check(run(root, &["validate"]), 2);
+    assert_eq!(fs::read_to_string(root.join(ADR)).unwrap(), changed);
+    // Ordinary edit cannot implicitly register the externally changed body.
+    reset(root, "0001", &changed, 2);
+    check(run(root, &["edit", "0001", "--register-external"]), 2);
+    for corrupt in [
+        changed.replace("status: approved", "status: proposed"),
+        changed.replace("date:", "related_adrs: [\"9999\"]\ndate:"),
+        format!("{changed}\n## Lifecycle notes\n### 2020-01-01\nUnexpected note.\n"),
+    ] {
+        fs::write(root.join(ADR), &corrupt).unwrap();
+        register(root, "0001", 2);
+        assert_eq!(fs::read_to_string(root.join(ADR)).unwrap(), corrupt);
+        assert_eq!(
+            fs::read_to_string(root.join(".badr/evidence.jsonl")).unwrap(),
+            ledger
+        );
+    }
+    fs::write(root.join(ADR), &changed).unwrap();
+    fs::write(root.join(".badr/unrelated"), "Unrecognized storage").unwrap();
+    register(root, "0001", 2);
+    fs::remove_file(root.join(".badr/unrelated")).unwrap();
+    let result = register(root, "0001", 0);
+    assert_eq!(result["validation_coverage"]["history"], "passed");
+    assert!(
+        fs::read_to_string(root.join(".badr/evidence.jsonl"))
+            .unwrap()
+            .starts_with(&ledger)
+    );
+    assert_eq!(
+        fs::read_to_string(root.join(ADR)).unwrap(),
+        changed.replace("status: approved", "status: proposed")
+    );
+    check(run(root, &["validate"]), 0);
+    decide(root, "0001");
+}
+
+#[test]
+fn reset_requires_named_feature_branch_complete_history_and_authorization() {
+    let dir = approved_feature();
+    let root = dir.path();
+    let text = fs::read_to_string(root.join(ADR)).unwrap();
+    let changed = text.clone() + "\nChange.\n";
+    edit_content(root, "0001", &changed, 2);
+    git(root, &["switch", "--detach"]);
+    reset(root, "0001", &changed, 2);
+    git(root, &["switch", "trunk"]);
+    reset(root, "0001", &changed, 2);
+    git(root, &["switch", "feature"]);
+    git(root, &["branch", "-m", "renamed"]);
+    let git_dir = git(root, &["rev-parse", "--absolute-git-dir"]);
+    fs::write(
+        Path::new(&git_dir).join("shallow"),
+        format!("{}\n", git(root, &["rev-parse", "HEAD"])),
+    )
+    .unwrap();
+    reset(root, "0001", &changed, 3);
+    fs::remove_file(Path::new(&git_dir).join("shallow")).unwrap();
+    let (_editor, executable) = editor("exit 0");
+    check(
+        run(
+            root,
+            &[
+                "edit",
+                "0001",
+                "--editor",
+                &executable,
+                "--confirm",
+                "--actor",
+                "Human",
+                "--rationale",
+                "Check no-op",
+            ],
+        ),
+        0,
+    );
+    assert_eq!(fs::read_to_string(root.join(ADR)).unwrap(), text);
+    let (_editor, executable) = editor("printf '\\nRevised reasoning.\\n' >> \"$1\"");
+    check(
+        run(
+            root,
+            &[
+                "edit",
+                "0001",
+                "--editor",
+                &executable,
+                "--confirm",
+                "--actor",
+                "Human",
+                "--rationale",
+                "Revise",
+            ],
+        ),
+        0,
+    );
+    check(run(root, &["validate"]), 0);
+}
+
+#[test]
+fn earlier_baseline_proposal_blocks_reset_after_branch_rename_and_reconfiguration() {
+    let dir = repo();
+    let root = dir.path();
+    let initial = git(root, &["rev-parse", "HEAD"]);
+    check(run(root, &["new", "adr", "storage-choice"]), 0);
+    commit_records(root); // Earlier proposal makes the identity durable.
+    git(root, &["switch", "-c", "feature"]);
+    decide(root, "0001");
+    let changed = fs::read_to_string(root.join(ADR)).unwrap() + "\nChange.\n";
+    reset(root, "0001", &changed, 2);
+    git(root, &["branch", "-m", "renamed"]);
+    reset(root, "0001", &changed, 2);
+    git(root, &["branch", "older", &initial]);
+    fs::write(
+        root.join(".badr/config.yaml"),
+        "version: 1\nbaseline_branch: older\n",
+    )
+    .unwrap();
+    git(root, &["branch", "-D", "trunk"]);
+    reset(root, "0001", &changed, 2);
+    fs::write(root.join(ADR), &changed).unwrap();
+    register(root, "0001", 2);
+}
+
+#[test]
+fn brr_reset_and_external_registration_keep_body_bytes_and_inactive_state() {
+    let dir = repo();
+    let root = dir.path();
+    git(root, &["switch", "-c", "feature"]);
+    check(run(root, ADD), 0);
+    check(
+        run(
+            root,
+            &[
+                "new",
+                "brr",
+                "cancellation",
+                "--domain",
+                "ordering",
+                "--owner",
+                "Product",
+            ],
+        ),
+        0,
+    );
+    let path = ".badr/brrs/domains/ordering/rules/BRR-ORD-001-cancellation.feature";
+    let text = fs::read_to_string(root.join(path))
+        .unwrap()
+        .replace("TODO", "Reviewed");
+    fs::write(root.join(path), text).unwrap();
+    check(
+        run(
+            root,
+            &[
+                "propose",
+                "BRR-ORD-001",
+                "--confirm",
+                "--actor",
+                "Human",
+                "--rationale",
+                "Ready",
+            ],
+        ),
+        0,
+    );
+    decide(root, "BRR-ORD-001");
+    let text = fs::read_to_string(root.join(path)).unwrap() + "\n# Changed rule\r\n";
+    reset(root, "BRR-ORD-001", &text, 0);
+    assert_eq!(
+        fs::read_to_string(root.join(path)).unwrap(),
+        text.replace("status: approved", "status: proposed")
+    );
+    decide(root, "BRR-ORD-001");
+    let text = fs::read_to_string(root.join(path)).unwrap() + "\n# External change\n";
+    fs::write(root.join(path), text).unwrap();
+    register(root, "BRR-ORD-001", 0);
+    check(run(root, &["validate"]), 0);
+    decide(root, "BRR-ORD-001");
+}
+
+#[test]
+fn reset_partial_publication_reports_record_and_retained_manual_repair_lock() {
+    let dir = approved_feature();
+    let root = dir.path();
+    let original = fs::read_to_string(root.join(ADR)).unwrap();
+    let ledger = fs::read(root.join(".badr/evidence.jsonl")).unwrap();
+    let input = tempfile::NamedTempFile::new().unwrap();
+    fs::write(input.path(), original + "\nRevised reasoning.\n").unwrap();
+    let result = check(
+        Command::new(env!("CARGO_BIN_EXE_badr"))
+            .arg("--repo")
+            .arg(root)
+            .arg("--json")
+            .args([
+                "edit",
+                "0001",
+                "--content",
+                input.path().to_str().unwrap(),
+                "--confirm",
+                "--actor",
+                "Human",
+                "--rationale",
+                "Revise",
+            ])
+            .env("BADR_TEST_FAIL_AT", "after_write_0")
+            .output()
+            .unwrap(),
+        4,
+    );
+    assert_eq!(
+        result["partial_write"]["completed"],
+        serde_json::json!([ADR])
+    );
+    assert_eq!(
+        result["partial_write"]["not_completed"],
+        serde_json::json!([".badr/evidence.jsonl"])
+    );
+    assert_eq!(fs::read(root.join(".badr/evidence.jsonl")).unwrap(), ledger);
+    assert!(root.join(".badr.lock").exists());
+    assert!(
+        fs::read_to_string(root.join(ADR))
+            .unwrap()
+            .contains("status: proposed")
+    );
+    check(run(root, &["new", "adr", "blocked"]), 4);
+}
+
+#[test]
+fn deleted_baseline_identity_remains_ineligible() {
+    let dir = repo();
+    let root = dir.path();
+    check(run(root, &["new", "adr", "storage-choice"]), 0);
+    decide(root, "0001");
+    commit_records(root);
+    // A later baseline tree omits the ID, but history still reserves and freezes it.
+    git(root, &["rm", ADR]);
+    git(
+        root,
+        &[
+            "-c",
+            "user.name=Test",
+            "-c",
+            "user.email=test@example.invalid",
+            "commit",
+            "-m",
+            "Delete record",
+        ],
+    );
+    git(root, &["switch", "-c", "feature"]);
+    git(root, &["restore", "--source=HEAD~1", "--", ADR]);
+    let original = fs::read_to_string(root.join(ADR)).unwrap();
+    reset(root, "0001", &(original.clone() + "\nChange.\n"), 2);
+    assert_eq!(fs::read_to_string(root.join(ADR)).unwrap(), original);
+}
+
+#[test]
+fn reset_rechecks_baseline_and_checkout_before_publication() {
+    for moved in ["baseline", "checkout"] {
+        let dir = approved_feature();
+        let root = dir.path();
+        let original = fs::read_to_string(root.join(ADR)).unwrap();
+        let input = tempfile::NamedTempFile::new().unwrap();
+        fs::write(input.path(), original.clone() + "\nChange.\n").unwrap();
+        let control = tempfile::tempdir().unwrap();
+        let writer = Command::new(env!("CARGO_BIN_EXE_badr"))
+            .arg("--repo")
+            .arg(root)
+            .arg("--json")
+            .args([
+                "edit",
+                "0001",
+                "--content",
+                input.path().to_str().unwrap(),
+                "--confirm",
+                "--actor",
+                "Human",
+                "--rationale",
+                "Revise",
+            ])
+            .env("BADR_TEST_PAUSE_AT", "before_apply")
+            .env("BADR_TEST_CONTROL", control.path())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+            .unwrap();
+        let start = std::time::Instant::now();
+        while !control.path().join("ready").exists() {
+            assert!(start.elapsed().as_secs() < 15);
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        if moved == "baseline" {
+            git(
+                root,
+                &[
+                    "-c",
+                    "user.name=Test",
+                    "-c",
+                    "user.email=test@example.invalid",
+                    "commit",
+                    "--allow-empty",
+                    "-m",
+                    "Move baseline",
+                ],
+            );
+            git(root, &["branch", "-f", "trunk", "HEAD"]);
+        } else {
+            git(root, &["switch", "trunk"]);
+        }
+        fs::write(control.path().join("resume"), "continue").unwrap();
+        let result = check(writer.wait_with_output().unwrap(), 4);
+        assert_eq!(result["partial_write"]["completed"], serde_json::json!([]));
+        assert_eq!(fs::read_to_string(root.join(ADR)).unwrap(), original);
+    }
+}
+
+#[test]
+fn external_registration_does_not_exempt_another_approved_body() {
+    let dir = approved_feature();
+    let root = dir.path();
+    check(run(root, &["new", "adr", "other-choice"]), 0);
+    let other = root.join(".badr/adrs/0002-other-choice.md");
+    let text = fs::read_to_string(&other)
+        .unwrap()
+        .replace("TODO:", "Reviewed:");
+    fs::write(&other, text).unwrap();
+    decide(root, "0002");
+    let ledger = fs::read(root.join(".badr/evidence.jsonl")).unwrap();
+    for path in [root.join(ADR), other] {
+        let text = fs::read_to_string(&path).unwrap() + "\nExternal change.\n";
+        fs::write(path, text).unwrap();
+    }
+    let result = register(root, "0001", 2);
+    assert!(
+        result["diagnostics"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|d| d["code"] == "body_digest_mismatch" && d["record_id"] == "0002")
+    );
+    assert_eq!(fs::read(root.join(".badr/evidence.jsonl")).unwrap(), ledger);
+}

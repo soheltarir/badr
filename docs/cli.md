@@ -3,7 +3,7 @@
 BADR implements initialization and read-only BRR/ADR inspection and structural
 validation, operation-evidence replay, exact frozen-body checks, and retained
 Git revision checks, governed domain registration, record creation, BRR proposal,
-ordinary record editing, and explicit approval. Activation, replacement, and the
+ordinary record editing, explicit approval, and eligible branch-local approval reset. Activation, replacement, and the
 remaining lifecycle commands remain unavailable.
 See the [versioned evidence contract](evidence.md) for the event schema and
 coverage limits.
@@ -388,16 +388,15 @@ they neither require nor fabricate actor/rationale/confirmation, alter an ADR's
 latest governed-update date, append transition evidence, approve, or reset.
 Governed status, applicability, relationship, or lifecycle-note changes must use
 their dedicated commands with authorization and ADR date semantics where applicable.
-Approved and withdrawn/rejected bodies stay frozen; approved-body reset remains
-unavailable until the separate eligible-reset operation is implemented. Editing
-cannot register or repair an unauthorized external frozen-body change.
+Approved bodies remain frozen unless an explicitly authorized reset qualifies
+under the gates below. Withdrawn/rejected bodies require a successor.
 
 The shared safe writer validates the whole current collection and intended result,
 including unrelated records, relationships, evidence, and required history. It
 checks expected bytes/file identities and baseline stability before publishing,
 then revalidates. Existing unrelated invalidity blocks editing. Valid unrelated
 managed/unmanaged changes and staged files are preserved. Only the selected
-record is published; registry and evidence bytes remain unchanged. Failed
+record is published for ordinary editing; registry and evidence bytes remain unchanged. Failed
 publication/final checks use the shared exact completed/pending path report and
 retained-lock manual-repair behavior. Individual file replacement is atomic;
 arbitrary external editors can still race the final expected-content check.
@@ -406,6 +405,49 @@ Human and JSON output report changed IDs, coverage, pending commit durability,
 completed/pending writes, and a proposed audit message after successful changes.
 `edit` never stages or commits, and successful structural validation is not
 human review or authorization.
+
+## Branch-local approval reset
+
+```sh
+badr edit 0001 --content /path/to/revised-decision.md \
+  --confirm --actor "Human" --rationale "Revise branch-local reasoning"
+badr edit BRR-ORD-001 --editor /usr/bin/vi \
+  --confirm --actor "Human" --rationale "Revise branch-local policy"
+badr edit 0001 --register-external \
+  --confirm --actor "Human" --rationale "Register an external reasoning change"
+```
+
+An actual approved-body change requires `--confirm`, nonempty `--actor`, and
+nonempty `--rationale`. Agents obtain human authorization outside BADR. The
+checkout must be a named branch other than the configured baseline, with valid
+existing evidence and complete required history. The ID must never have appeared
+in baseline history, including earlier drafts/proposals and subsequently deleted
+files, and must never have been activated or participated on either side of
+completed supersession. Renaming branches, deleting baseline records, withdrawing
+successors, or changing baseline configuration cannot unfreeze known durable IDs.
+V1 refuses retargeting committed baseline configuration.
+
+Choose exactly one input: `--content`, `--editor`, or `--register-external`.
+The last form explicitly registers the body's current on-disk bytes without an
+editor or input file. It permits only the target approved body's known digest
+mismatch during prevalidation. All other collection, metadata, lifecycle-note,
+evidence, and history checks still apply, including unrelated digest mismatches
+and invalid committed snapshots. An unchanged body cannot be registered.
+`validate` remains read-only and continues reporting unauthorized direct edits.
+Ineligible changes must be restored or expressed in a successor.
+
+Reset sets `proposed`, updates an ADR's UTC governed date, and appends an `edit`
+event with authorization, actual time, branch, resolved baseline commit, changed
+body digest, and prior `approval_ref`. Every earlier receipt is retained exactly.
+Another `decide` is required and produces a new approval receipt. Supplied/editor
+no-ops retain approval and its active receipt without any new event.
+
+Both record types use complete-change validation, locking, expected-content and
+baseline rechecks, atomic individual-file writes, and postvalidation. Publication
+order is record then evidence. Success returns `operation: edit`, `result: edited`,
+coverage, affected IDs, pending commit durability, and a proposed audit message.
+Failure after publication reports completed/pending paths and retains the repair
+lock; record and evidence publication is not a crash-atomic transaction.
 
 ## Explicit approval
 

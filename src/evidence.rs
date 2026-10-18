@@ -631,7 +631,12 @@ fn references(states: &BTreeMap<String, State>, available: [bool; 2], report: &m
 fn frozen(status: &str) -> bool {
     !matches!(status, "draft" | "proposed")
 }
-fn compare(states: &BTreeMap<String, State>, records: &[Record], report: &mut Report) {
+fn compare(
+    states: &BTreeMap<String, State>,
+    records: &[Record],
+    report: &mut Report,
+    reset_target: Option<&str>,
+) {
     let mut present = BTreeSet::new();
     for record in records {
         let id = record.id();
@@ -697,7 +702,10 @@ fn compare(states: &BTreeMap<String, State>, records: &[Record], report: &mut Re
                 None,
             );
         }
-        if frozen(status) && hash(body) != c.body_sha256 {
+        if frozen(status)
+            && hash(body) != c.body_sha256
+            && !(reset_target == Some(id) && status == "approved")
+        {
             issue(
                 report,
                 "body_digest_mismatch",
@@ -1085,7 +1093,7 @@ fn history(root: &Path, text: &str, evidence: &[Event], report: &mut Report) {
             }
             let old_events = events(&ledger, report);
             let states = replay(&old_events, available, report);
-            compare(&states, &records, report);
+            compare(&states, &records, report, None);
             references(&states, available, report);
             snapshots.push(Snapshot {
                 commit: commit.into(),
@@ -1149,7 +1157,12 @@ fn history(root: &Path, text: &str, evidence: &[Event], report: &mut Report) {
         Err(HistoryError::Operational(error)) => report.io(error),
     }
 }
-pub(super) fn inspect(root: &Path, history_root: &Path, report: &mut Report) {
+pub(super) fn inspect(
+    root: &Path,
+    history_root: &Path,
+    report: &mut Report,
+    reset_target: Option<&str>,
+) {
     let start = report.diagnostics.len();
     report.validation_coverage.evidence = "incomplete";
     let text = match super::safe_entry(&root.join(LEDGER)) {
@@ -1211,7 +1224,7 @@ pub(super) fn inspect(root: &Path, history_root: &Path, report: &mut Report) {
     ];
     let states = replay(&events, available, report);
     let records = std::mem::take(&mut report.records);
-    compare(&states, &records, report);
+    compare(&states, &records, report, reset_target);
     references(
         &states,
         [
@@ -1391,4 +1404,60 @@ pub(super) fn reserved_ids(root: &Path) -> Result<Vec<String>, super::Failure> {
         }
     }
     Ok(ids)
+}
+
+// The caller has already validated the complete collection, evidence, and required history.
+pub(super) fn reset_approval(
+    root: &Path,
+    report: &Report,
+    id: &str,
+) -> Result<String, super::Failure> {
+    let mut checked = Report::new("edit");
+    let events = events(&fs::read_to_string(root.join(LEDGER))?, &mut checked);
+    let states = replay(&events, [true, true], &mut checked);
+    if checked.exit_code != 0 {
+        return Err("Existing evidence is invalid".into());
+    }
+    let state = states
+        .get(&identity(id).ok_or("Invalid identity")?)
+        .ok_or("Missing evidence")?;
+    if state.revision.to != "approved" || state.activated || state.replaced {
+        return Err("A previously activated or replaced record requires a successor".into());
+    }
+    let branch = git(root, &["symbolic-ref", "--quiet", "--short", "HEAD"])?;
+    if branch.status.code().is_none_or(|code| code > 1) {
+        return Err(io::Error::other(String::from_utf8_lossy(&branch.stderr).into_owned()).into());
+    }
+    let branch = String::from_utf8(branch.stdout).map_err(|e| e.to_string())?;
+    let config = super::config(root)?;
+    if !branch.trim().is_empty() && branch.trim() != config.baseline_branch {
+        let mut commits = BTreeSet::new();
+        commits.insert(
+            report
+                .baseline_commit
+                .as_deref()
+                .ok_or("Baseline unavailable")?,
+        );
+        commits.extend(events.iter().map(|e| e.baseline_commit.as_str()));
+        for commit in commits {
+            match baseline_contains(root, commit, id) {
+                Ok(false) => {}
+                Ok(true) => {
+                    return Err(
+                        "An ID that ever appeared in baseline history requires a successor".into(),
+                    );
+                }
+                Err(HistoryError::Operational(e)) => return Err(e.into()),
+                Err(HistoryError::Unavailable(e)) => return Err(e.into()),
+            }
+        }
+    } else {
+        return Err("Approval reset requires a named branch other than the baseline".into());
+    }
+    Ok(state
+        .approval
+        .as_ref()
+        .ok_or("Missing active approval")?
+        .0
+        .clone())
 }

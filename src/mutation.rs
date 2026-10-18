@@ -130,7 +130,12 @@ fn ensure_unchanged(root: &Path, expected: &BTreeMap<String, Entry>) -> io::Resu
     }
     Ok(())
 }
-fn baseline_unchanged(root: &Path, branch: &str, expected: &str) -> io::Result<()> {
+fn baseline_unchanged(
+    root: &Path,
+    branch: &str,
+    expected: &str,
+    reset_checkout: Option<&[u8]>,
+) -> io::Result<()> {
     let out = git(
         root,
         &[
@@ -145,6 +150,14 @@ fn baseline_unchanged(root: &Path, branch: &str, expected: &str) -> io::Result<(
         return Err(io::Error::other(
             "Baseline reference changed before safe application",
         ));
+    }
+    if let Some(expected) = reset_checkout {
+        let current = git(root, &["symbolic-ref", "--quiet", "HEAD"])?;
+        if !current.status.success() || current.stdout != expected {
+            return Err(io::Error::other(
+                "Checkout branch changed before safe approval reset",
+            ));
+        }
     }
     Ok(())
 }
@@ -240,6 +253,23 @@ pub(super) fn run(
     operation: &str,
     prepare: impl FnOnce(&Path, &Report, &BTreeMap<String, Entry>) -> Result<Plan, Failure>,
 ) -> Report {
+    run_inner(target, operation, None, prepare)
+}
+
+pub(super) fn run_edit(
+    target: &Path,
+    reset_target: Option<&str>,
+    prepare: impl FnOnce(&Path, &Report, &BTreeMap<String, Entry>) -> Result<Plan, Failure>,
+) -> Report {
+    run_inner(target, "edit", reset_target, prepare)
+}
+
+fn run_inner(
+    target: &Path,
+    operation: &str,
+    reset_target: Option<&str>,
+    prepare: impl FnOnce(&Path, &Report, &BTreeMap<String, Entry>) -> Result<Plan, Failure>,
+) -> Report {
     let mut report = Report::new(operation);
     let Some(root) = root(target, &mut report) else {
         return report;
@@ -255,7 +285,7 @@ pub(super) fn run(
         let config = config(&root)?;
         report.validation_coverage.configuration = "passed";
         baseline(&root, &config.baseline_branch, &mut report);
-        inspect_collection(&root, &mut report);
+        inspect_collection_for_reset(&root, &root, &mut report, reset_target);
         if report.exit_code != 0 {
             return Ok(());
         }
@@ -270,11 +300,21 @@ pub(super) fn run(
         }
         let baseline_commit = report.baseline_commit.clone().unwrap();
         let mut expected = snapshot(&root)?;
+        let checkout = if operation == "edit" {
+            Some(git(&root, &["symbolic-ref", "--quiet", "HEAD"])?.stdout)
+        } else {
+            None
+        };
         let Plan {
             writes,
             affected_ids,
             message,
         } = prepare(&root, &report, &expected)?;
+        let reset_checkout = checkout.filter(|_| {
+            writes
+                .iter()
+                .any(|(path, _)| path == ".badr/evidence.jsonl")
+        });
         let staged = tempfile::tempdir()?;
         for (path, entry) in &expected {
             if let Some(content) = &entry.bytes {
@@ -308,14 +348,24 @@ pub(super) fn run(
         report.partial_write.not_completed = writes.iter().map(|(path, _)| path.clone()).collect();
         checkpoint("before_apply")?;
         ensure_unchanged(&root, &expected)?;
-        baseline_unchanged(&root, &config.baseline_branch, &baseline_commit)?;
+        baseline_unchanged(
+            &root,
+            &config.baseline_branch,
+            &baseline_commit,
+            reset_checkout.as_deref(),
+        )?;
         if !lock.owned() {
             return Err(io::Error::other("Writer lock was replaced externally").into());
         }
         for (index, (path, content)) in writes.iter().enumerate() {
             checkpoint(&format!("before_write_{index}"))?;
             ensure_unchanged(&root, &expected)?;
-            baseline_unchanged(&root, &config.baseline_branch, &baseline_commit)?;
+            baseline_unchanged(
+                &root,
+                &config.baseline_branch,
+                &baseline_commit,
+                reset_checkout.as_deref(),
+            )?;
             if !lock.owned() {
                 return Err(io::Error::other("Writer lock was replaced externally").into());
             }
@@ -365,14 +415,24 @@ pub(super) fn run(
         }
         checkpoint("before_postvalidate")?;
         ensure_unchanged(&root, &expected)?;
-        baseline_unchanged(&root, &config.baseline_branch, &baseline_commit)?;
+        baseline_unchanged(
+            &root,
+            &config.baseline_branch,
+            &baseline_commit,
+            reset_checkout.as_deref(),
+        )?;
         checkpoint("validate_written")?;
         report.records.clear();
         inspect_collection(&root, &mut report);
         if report.exit_code == 0 {
             checkpoint("after_postvalidate")?;
             ensure_unchanged(&root, &expected)?;
-            baseline_unchanged(&root, &config.baseline_branch, &baseline_commit)?;
+            baseline_unchanged(
+                &root,
+                &config.baseline_branch,
+                &baseline_commit,
+                reset_checkout.as_deref(),
+            )?;
             if !lock.owned() {
                 return Err(io::Error::other("Writer lock was replaced externally").into());
             }
