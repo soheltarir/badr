@@ -453,6 +453,7 @@ fn run_inner(
                     "activate" => "effective",
                     "deprecate" => "deprecated",
                     "retire" => "retired",
+                    "supersede" => "superseded",
                     _ => "created",
                 }
             }

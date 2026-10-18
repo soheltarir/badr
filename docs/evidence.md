@@ -8,7 +8,7 @@ identities are errors. [The event schema](evidence-schema-v1.json) describes the
 wire shape; replay adds state, relationship, and history constraints.
 
 Domain registration, BRR proposal, explicit approval, eligible approval reset,
-ADR rejection/deprecation, and immediate BRR activation/deprecation/retirement
+ADR rejection/deprecation, explicit BRR replacement, and immediate BRR activation/deprecation/retirement
 create governed events; record creation creates allocation events. Explicit
 `edit --register-external` registers an eligible body change using the same reset
 event. Evidence repair and the remaining lifecycle commands remain unavailable.
@@ -174,3 +174,19 @@ deprecation and the exact decision digest. Rejection freezes the resulting
 reasoning without creating an approval. Prior receipts and notes remain intact.
 Deprecated ADRs remain valid predecessors for later explicit supersession;
 withdrawal never infers a replacement.
+
+## BRR replacement commands
+
+`activate` with an explicit group records approved successors becoming effective
+and effective predecessors becoming superseded in one event. `supersede` uses
+already effective successors. Each event records the complete sorted
+`replacement.predecessors` and `replacement.successors`, `complete: true`, and
+`compatibility_confirmed: true` from the caller's declarations. Every affected
+revision retains its existing `approval_ref` and exact body digest. Reciprocal
+links are added without deleting previous replacement history. Activation/end
+timestamps use the single actual event time; earlier activation times survive.
+
+The intended collection and event are validated before publication. Each file
+is replaced safely, but the group is not crash-atomic: interruption can leave
+partial replacement or mismatched evidence. Completed/remaining paths and a
+retained repair lock identify known failures. There is no automatic rollback.

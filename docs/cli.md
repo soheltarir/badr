@@ -4,8 +4,8 @@ BADR implements initialization and read-only BRR/ADR inspection and structural
 validation, operation-evidence replay, exact frozen-body checks, and retained
 Git revision checks, governed domain registration, record creation, BRR proposal,
 ordinary record editing, explicit approval, eligible branch-local approval reset,
-ADR rejection/deprecation, and immediate BRR activation/withdrawal.
-Replacement and the remaining lifecycle commands remain unavailable.
+ADR rejection/deprecation, immediate BRR activation/withdrawal, and explicit
+complete BRR replacement. ADR replacement remains unavailable.
 See the [versioned evidence contract](evidence.md) for the event schema and
 coverage limits.
 
@@ -610,7 +610,7 @@ Rejection remains non-authoritative. Deprecation immediately withdraws direction
 for new work in this checkout: `list --directing` excludes the ADR and `show`
 reports `directs_new_work: false`. Neither command changes existing code,
 baseline files, production, or asserts existing-code conformance. Deprecated
-ADRs remain eligible for a later explicit supersession; the replacement command
+ADRs remain eligible for a later explicit supersession; ADR replacement
 is still unavailable. Rejected/deprecated records cannot reopen through `edit`
 or `decide`, and their reasoning stays frozen. IDs and relationships are retained.
 
@@ -628,3 +628,52 @@ These commands use complete-change validation, the shared lock/safe writer,
 partial-write/manual-repair reporting, and pending commit durability. Human
 output includes completed/pending paths and the proposed audit commit message;
 JSON exposes the same report fields. They never stage or commit automatically.
+
+## Explicit complete BRR replacement
+
+Activate previously approved successors and end predecessor applicability:
+
+```sh
+badr activate --predecessor BRR-ORD-001 --successor BRR-ORD-002 \
+  --successor BRR-ORD-003 --complete --reviewed --confirm \
+  --actor "Human" --rationale "These two rules jointly replace cancellation policy"
+```
+
+For successors already effective, use `supersede` with the same flags. Repeat
+`--predecessor` for consolidation and `--successor` for splitting. Sets must be
+nonempty, duplicate-free, disjoint, and contain existing BRRs. Predecessors must
+be effective; `activate` successors must be approved, while `supersede` successors
+must already be effective. A positional ID remains supported for ordinary
+`activate <id>` and cannot be combined with replacement flags. ADR replacement
+is not implemented by these commands.
+
+`--complete` declares that the entire predecessor policy is replaced by the
+listed successors jointly. `--reviewed` declares human review of compatibility
+for existing data and in-flight behavior. Successors must carry the Feature
+tag `@successor` before approval; `decide --reviewed` checks both
+`@compatibility:existing-data` and `@compatibility:in-flight` scenarios with a
+`treatment:grandfather`, `treatment:migrate`, `treatment:re-evaluate`, or
+`treatment:reject` tag and a nonempty `Then` outcome. Prefix each tag with `@`
+in Gherkin. Missing treatment requires eligible edit/reset and reapproval, or
+a new successor. BADR checks structure and declarations; humans judge completeness.
+
+Both commands retain bodies, prior approval receipts, activation times, and
+historical links. They add reciprocal `supersedes`/`superseded_by` links and
+reject cycles. Predecessors become `superseded` with an immediate end time;
+coordinated activation gives every successor the same immediate start time.
+Scheduling/backdating flags are unsupported. Approval alone never withdraws
+a predecessor. Completed replacement prevents approval reset on either side.
+Later withdrawal exposes gaps without reviving any predecessor. Partial or
+intended replacement belongs in reasoning and ordinary related links.
+
+JSON uses the existing schema version 1, including all sorted `affected_ids`,
+baseline, coverage, pending commit durability, and completed/remaining writes.
+Successful `activate` reports `result: "effective"`; successful `supersede`
+reports `result: "superseded"`. Human output includes write outcomes and a
+proposed audit commit message. Neither command commits managed records.
+
+The shared whole-collection pre/postvalidation, lock, baseline/content rechecks,
+and safe individual-file writes apply. These group operations are **not
+crash-atomic**. A failure can leave partial replacement; preserve the reported
+paths and repair manually using the lock cleanup procedure above. No automatic
+rollback or recovery is provided.
