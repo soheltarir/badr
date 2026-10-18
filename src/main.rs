@@ -46,6 +46,12 @@ enum Operation {
     Propose(repository::authoring::Proposal),
     /// Approve after human authorization outside BADR; records a declaration, not authentication.
     Decide(repository::authoring::Approval),
+    /// Immediately activate an approved BRR through explicit human authorization.
+    Activate(repository::authoring::Proposal),
+    /// Immediately deprecate an effective BRR, exposing any policy gap.
+    Deprecate(repository::authoring::Proposal),
+    /// Immediately retire an effective BRR, exposing any policy gap.
+    Retire(repository::authoring::Proposal),
     /// Inspect managed records with explicit applicability selection.
     List {
         #[command(flatten)]
@@ -82,6 +88,13 @@ fn main() -> ExitCode {
         }
     };
     let report = match cli.command {
+        Operation::Activate(choice) => {
+            repository::authoring::lifecycle(&cli.repo, "activate", choice)
+        }
+        Operation::Deprecate(choice) => {
+            repository::authoring::lifecycle(&cli.repo, "deprecate", choice)
+        }
+        Operation::Retire(choice) => repository::authoring::lifecycle(&cli.repo, "retire", choice),
         Operation::Edit(edit) => repository::editing::run(&cli.repo, edit),
         Operation::Decide(approval) => repository::authoring::decide(&cli.repo, approval),
         Operation::Propose(proposal) => repository::authoring::propose(&cli.repo, proposal),
@@ -116,7 +129,15 @@ fn emit(report: Report, json: bool) -> ExitCode {
         let mut output = format!("{}: {}\n", report.operation, report.result);
         if matches!(
             report.operation.as_str(),
-            "domain_add" | "new_brr" | "new_adr" | "propose" | "edit" | "decide"
+            "domain_add"
+                | "new_brr"
+                | "new_adr"
+                | "propose"
+                | "edit"
+                | "decide"
+                | "activate"
+                | "deprecate"
+                | "retire"
         ) {
             output.push_str(&format!(
                 "Completed writes: {:?}\nNot completed: {:?}\nPending audit commit: {:?}\n",

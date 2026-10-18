@@ -37,7 +37,10 @@
         "new_adr",
         "propose",
         "edit",
-        "decide"
+        "decide",
+        "activate",
+        "deprecate",
+        "retire"
       ]
     },
     "result": {
@@ -46,6 +49,9 @@
         "edited",
         "proposed",
         "approved",
+        "effective",
+        "deprecated",
+        "retired",
         "unchanged",
         "ok",
         "invalid",
