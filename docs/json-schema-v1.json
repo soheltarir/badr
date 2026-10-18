@@ -35,13 +35,15 @@
         "domain_add",
         "new_brr",
         "new_adr",
-        "propose"
+        "propose",
+        "decide"
       ]
     },
     "result": {
       "enum": [
         "created",
         "proposed",
+        "approved",
         "unchanged",
         "ok",
         "invalid",
