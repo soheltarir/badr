@@ -112,7 +112,7 @@ fn change(status: &str, from: Option<&str>, approval: Option<&str>) -> Value {
     json!({"id":"0001","path":ADR,"from":from,"to":status,"body_sha256":digest(BODY.as_bytes()),"approval_ref":approval,"date":"2020-01-01","notes_sha256":digest(b""),"related":[],"supersedes":[],"superseded_by":[]})
 }
 fn event(root: &Path, id: &str, operation: &str, changes: Vec<Value>) -> Value {
-    json!({"version":1,"event_id":id,"operation":operation,"at":"2020-01-01T00:00:00Z","branch":git(root,&["symbolic-ref","--short","HEAD"]),"baseline_commit":git(root,&["rev-parse","trunk"]),"actor":"Human","rationale":"Reviewed change","confirmed":true,"changes":changes})
+    json!({"version":1,"event_id":id,"operation":operation,"at":"2020-01-01T00:00:00Z","branch":git(root,&["symbolic-ref","--short","HEAD"]),"baseline_commit":git(root,&["rev-parse","trunk"]),"actor":"Human","rationale":"Reviewed change","confirmed":true,"reviewed":operation == "decide","changes":changes})
 }
 fn ledger(root: &Path, events: &[Value]) {
     fs::write(
@@ -1023,4 +1023,38 @@ fn baseline_reconfiguration_cannot_unfreeze_a_durable_record() {
     ledger(root, &all);
     write_adr(root, "proposed", &modified, "", "");
     assert!(codes(&report(root, 2)).contains(&"baseline_configuration_changed"));
+}
+
+#[test]
+fn approval_receipts_require_resolved_review_declaration() {
+    for declaration in [None, Some(json!(false))] {
+        let dir = repo();
+        let root = dir.path();
+        write_adr(root, "approved", BODY, "", "");
+        let mut approval = event(
+            root,
+            "approve-1",
+            "decide",
+            vec![change("approved", Some("proposed"), Some("approve-1"))],
+        );
+        approval.as_object_mut().unwrap().remove("reviewed");
+        if let Some(value) = declaration {
+            approval["reviewed"] = value;
+        }
+        ledger(
+            root,
+            &[
+                event(
+                    root,
+                    "allocate-1",
+                    "allocate",
+                    vec![change("proposed", None, None)],
+                ),
+                approval,
+            ],
+        );
+        let bytes = fs::read(root.join(".badr/evidence.jsonl")).unwrap();
+        assert!(codes(&report(root, 2)).contains(&"inconsistent_evidence"));
+        assert_eq!(fs::read(root.join(".badr/evidence.jsonl")).unwrap(), bytes);
+    }
 }

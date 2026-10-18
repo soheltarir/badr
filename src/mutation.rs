@@ -378,12 +378,13 @@ pub(super) fn run(
             }
             report.result = if writes.is_empty() {
                 "unchanged"
-            } else if operation == "edit" {
-                "edited"
-            } else if operation == "propose" {
-                "proposed"
             } else {
-                "created"
+                match operation {
+                    "edit" => "edited",
+                    "propose" => "proposed",
+                    "decide" => "approved",
+                    _ => "created",
+                }
             }
             .into();
             report.affected_ids = affected_ids;

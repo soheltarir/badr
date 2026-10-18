@@ -36,7 +36,8 @@
         "new_brr",
         "new_adr",
         "propose",
-        "edit"
+        "edit",
+        "decide"
       ]
     },
     "result": {
@@ -44,6 +45,7 @@
         "created",
         "edited",
         "proposed",
+        "approved",
         "unchanged",
         "ok",
         "invalid",

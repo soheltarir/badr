@@ -44,6 +44,8 @@ enum Operation {
     Edit(repository::editing::Edit),
     /// Submit a structurally valid draft BRR for review.
     Propose(repository::authoring::Proposal),
+    /// Approve after human authorization outside BADR; records a declaration, not authentication.
+    Decide(repository::authoring::Approval),
     /// Inspect managed records with explicit applicability selection.
     List {
         #[command(flatten)]
@@ -81,6 +83,7 @@ fn main() -> ExitCode {
     };
     let report = match cli.command {
         Operation::Edit(edit) => repository::editing::run(&cli.repo, edit),
+        Operation::Decide(approval) => repository::authoring::decide(&cli.repo, approval),
         Operation::Propose(proposal) => repository::authoring::propose(&cli.repo, proposal),
         Operation::New { command } => repository::authoring::new(&cli.repo, command),
         Operation::Domain { command } => repository::domain::run(&cli.repo, command),
@@ -113,7 +116,7 @@ fn emit(report: Report, json: bool) -> ExitCode {
         let mut output = format!("{}: {}\n", report.operation, report.result);
         if matches!(
             report.operation.as_str(),
-            "domain_add" | "new_brr" | "new_adr" | "propose" | "edit"
+            "domain_add" | "new_brr" | "new_adr" | "propose" | "edit" | "decide"
         ) {
             output.push_str(&format!(
                 "Completed writes: {:?}\nNot completed: {:?}\nPending audit commit: {:?}\n",

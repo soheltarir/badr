@@ -3,8 +3,8 @@
 BADR implements initialization and read-only BRR/ADR inspection and structural
 validation, operation-evidence replay, exact frozen-body checks, and retained
 Git revision checks, governed domain registration, record creation, BRR proposal,
-and ordinary record editing. Approval and the remaining lifecycle commands
-remain unavailable.
+ordinary record editing, and explicit approval. Activation, replacement, and the
+remaining lifecycle commands remain unavailable.
 See the [versioned evidence contract](evidence.md) for the event schema and
 coverage limits.
 
@@ -406,3 +406,64 @@ Human and JSON output report changed IDs, coverage, pending commit durability,
 completed/pending writes, and a proposed audit message after successful changes.
 `edit` never stages or commits, and successful structural validation is not
 human review or authorization.
+
+## Explicit approval
+
+```sh
+badr decide BRR-ORD-001 --confirm --reviewed --actor "Human" --rationale "Reviewed cancellation policy"
+badr decide 0001 --confirm --reviewed --actor "Human" --rationale "Reviewed storage decision" --json
+```
+
+`decide <id>` accepts only proposed BRRs or ADRs. It requires `--confirm`,
+nonempty `--actor` and `--rationale`, and `--reviewed`: the caller declares that
+a human reviewed the applicable content, relationships, compatibility treatment,
+and gaps and resolved them. Agents must obtain human authorization outside BADR.
+BADR records this declaration without authenticating the actor or proving an
+interview occurred. Descriptive owners/decision-makers and successful validation
+provide no authorization. The command works without prompts or editors.
+
+Resolve standalone uppercase `TODO`, `TBD`, and `FIXME` markers in the decision
+or rule body before approval. These markers block approval even with `--reviewed`.
+Other gaps and semantic adequacy remain the human reviewer's responsibility;
+passing a marker/structure check never establishes completeness.
+
+Mark an intended successor BRR with `@successor` on its Feature before approval.
+This expresses intent without a completed replacement link or replacement set.
+It requires scenarios under its Rule tagged `@compatibility:existing-data` and
+`@compatibility:in-flight`. Each must have a nonempty `Then` outcome step and an explicit
+`@treatment:grandfather`, `@treatment:migrate`, `@treatment:re-evaluate`, or
+`@treatment:reject` tag. One scenario may cover both scopes. For example:
+
+```gherkin
+    @compatibility:existing-data @treatment:grandfather
+    Scenario: Preserve existing orders
+      Given an order was accepted under the prior policy
+      When the new policy is introduced
+      Then the order retains its original cancellation rights
+```
+
+The caller must identify successor intent and review treatment for both scopes;
+BADR checks declared structure and records `reviewed: true`, while humans judge
+semantic completeness. Approval never infers replacement sets or changes
+predecessors, replacement links, or applicability times.
+
+Approval writes `approved` for both types. BRRs stay inactive until a separate
+explicit activation. ADRs immediately direct new work in the current checkout,
+update their governed date to today's UTC event date, and preserve decision text
+and lifecycle notes. Approval does not assess existing-code conformance or
+rewrite baseline files. Frontmatter is serialized; exact UTF-8 body bytes,
+including comments, whitespace, and LF/CRLF, are preserved for the receipt.
+
+The append-only receipt records actor/rationale, confirmation and resolved-review
+declaration, actual UTC time, current named branch, immutable baseline commit,
+affected ID/path, proposed-to-approved transition, and SHA-256 with an
+`approval_ref` pointing to this receipt. Repeating approval is an error and
+creates no event or new digest. Missing evidence, manual status changes, and
+unauthorized approved-body edits remain errors, with no automatic repair.
+
+Shared full-collection validation, required history, lock, baseline-race,
+expected-content, and manual-repair rules apply. Publication order is record
+then evidence, with accurate completed/pending paths on failure. Success returns
+`operation: decide`, `result: approved`, affected IDs, baseline/coverage,
+pending commit durability, and a proposed audit commit message. The command
+never stages or commits; Git durability requires the user's later audit commit.

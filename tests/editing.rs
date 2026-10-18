@@ -298,7 +298,7 @@ fn brr_identity_domain_status_and_applicability_are_preserved() {
     }
 }
 
-// A retained authorization fixture supplies frozen states until lifecycle commands exist.
+// Retained authorization fixtures exercise frozen states, including unimplemented rejection.
 fn freeze_adr(root: &Path, rejected: bool) {
     let ledger_path = root.join(".badr/evidence.jsonl");
     let ledger = fs::read_to_string(&ledger_path).unwrap();
@@ -312,6 +312,7 @@ fn freeze_adr(root: &Path, rejected: bool) {
     event["changes"][0]["from"] = "proposed".into();
     event["changes"][0]["to"] = status.into();
     if !rejected {
+        event["reviewed"] = true.into();
         event["changes"][0]["approval_ref"] = "authorization-fixture".into();
     }
     fs::write(ledger_path, format!("{ledger}{event}\n")).unwrap();
@@ -354,6 +355,48 @@ fn frozen_bodies_cannot_change_or_reopen_but_descriptive_owners_can() {
         .unwrap();
         edit_content(root, "0001", &edited, 2);
     }
+}
+
+#[test]
+fn explicit_approval_freezes_edited_content_without_blocking_metadata_or_noops() {
+    let dir = repo();
+    let root = dir.path();
+    check(run(root, &["new", "adr", "storage-choice"]), 0);
+    let text = fs::read_to_string(root.join(ADR))
+        .unwrap()
+        .replace("TODO:", "Reviewed:");
+    assert_eq!(edit_content(root, "0001", &text, 0)["result"], "edited");
+    let approved = check(
+        run(
+            root,
+            &[
+                "decide",
+                "0001",
+                "--confirm",
+                "--reviewed",
+                "--actor",
+                "Human",
+                "--rationale",
+                "Reviewed storage decision",
+            ],
+        ),
+        0,
+    );
+    assert_eq!(approved["result"], "approved");
+    let evidence = fs::read(root.join(".badr/evidence.jsonl")).unwrap();
+    let text = fs::read_to_string(root.join(ADR)).unwrap();
+    let unchanged = edit_content(root, "0001", &text, 0);
+    assert_eq!(unchanged["result"], "unchanged");
+    assert!(unchanged["proposed_audit_commit_message"].is_null());
+    edit_content(root, "0001", &(text.clone() + "\nChanged reasoning.\n"), 2);
+    assert_eq!(fs::read_to_string(root.join(ADR)).unwrap(), text);
+    let metadata = text.replace("decision-makers: []", "decision-makers: [Engineering]");
+    assert_eq!(edit_content(root, "0001", &metadata, 0)["result"], "edited");
+    assert_eq!(
+        fs::read(root.join(".badr/evidence.jsonl")).unwrap(),
+        evidence
+    );
+    check(run(root, &["validate"]), 0);
 }
 
 #[test]

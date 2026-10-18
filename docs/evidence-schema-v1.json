@@ -106,6 +106,13 @@
           }
         }
       ]
+    },
+    "reviewed": {
+      "type": [
+        "boolean",
+        "null"
+      ],
+      "description": "For decide, explicit declaration that applicable content and gaps were reviewed and resolved."
     }
   },
   "$defs": {
@@ -283,6 +290,39 @@
           },
           "domain": {
             "type": "null"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "operation": {
+            "const": "decide"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "actor",
+          "rationale",
+          "confirmed",
+          "reviewed"
+        ],
+        "properties": {
+          "actor": {
+            "type": "string",
+            "minLength": 1
+          },
+          "rationale": {
+            "type": "string",
+            "minLength": 1
+          },
+          "confirmed": {
+            "const": true
+          },
+          "reviewed": {
+            "const": true
           }
         }
       }

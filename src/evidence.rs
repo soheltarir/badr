@@ -22,6 +22,7 @@ struct Event {
     actor: Option<String>,
     rationale: Option<String>,
     confirmed: Option<bool>,
+    reviewed: Option<bool>,
     replacement: Option<Replacement>,
     changes: Vec<Change>,
     domain: Option<Domain>,
@@ -267,6 +268,9 @@ fn replay(events: &[Event], available: [bool; 2], report: &mut Report) -> BTreeM
                 return Err(
                     "Governed changes require actor, rationale, and explicit confirmation".into(),
                 );
+            }
+            if event.operation == "decide" && event.reviewed != Some(true) {
+                return Err("Approval requires a declaration that applicable content and gaps were reviewed and resolved".into());
             }
             if event.operation == "domain_add" {
                 let domain = event
