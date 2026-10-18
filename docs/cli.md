@@ -3,7 +3,7 @@
 BADR implements initialization and read-only BRR/ADR inspection and structural
 validation, operation-evidence replay, exact frozen-body checks, and retained
 Git revision checks, governed domain registration, record creation, BRR proposal,
-ordinary record editing, and explicit approval. Activation, replacement, and the
+ordinary record editing, explicit approval, and ADR rejection/deprecation. Activation, replacement, and the
 remaining lifecycle commands remain unavailable.
 See the [versioned evidence contract](evidence.md) for the event schema and
 coverage limits.
@@ -153,12 +153,12 @@ The same repository state produces the same JSON bytes.
 
 - `schema_version`: integer `1`; breaking contract changes require a new version.
 - `operation`: `init`, `domain_add`, `new_brr`, `new_adr`, `propose`, `edit`, `list`,
-  `show`, `validate`, or `arguments`.
+  `show`, `validate`, `decide`, `reject`, `deprecate`, or `arguments`.
 - `success`: true only for exit 0.
 - `result`: `created`/`unchanged` for successful init, `created` for registration/creation, `proposed` for BRR proposal, `edited`/`unchanged` for editing, `ok` for successful
-  inspection, otherwise `invalid`, `incomplete`, or `operational_failure`.
+  inspection, `approved` for approval, `rejected`/`deprecated` for ADR withdrawal, otherwise `invalid`, `incomplete`, or `operational_failure`.
 - `exit_code`: the process exit code.
-- `affected_ids`: the created/proposed/edited record ID after complete-change planning;
+- `affected_ids`: the created/proposed/edited/approved/withdrawn record ID after complete-change planning;
   empty for inspection, initialization, domain registration, and edit no-ops. Partial failures
   retain the intended ID; inspect `partial_write` to establish what was written.
 - `records`: BRR objects ordered by ID then path. Each has `type: "brr"`,
@@ -467,3 +467,43 @@ then evidence, with accurate completed/pending paths on failure. Success returns
 `operation: decide`, `result: approved`, affected IDs, baseline/coverage,
 pending commit durability, and a proposed audit commit message. The command
 never stages or commits; Git durability requires the user's later audit commit.
+
+## Reject or deprecate an ADR
+
+```sh
+badr reject 0001 --confirm --actor "Human" --rationale "Prefer another option"
+badr deprecate 0002 --confirm --actor "Human" --rationale "Direction no longer suitable" \
+  --decision-gap "Storage direction awaits a successor" \
+  --existing-code-treatment "Retain existing implementation pending an authorized migration"
+```
+
+`reject` accepts only proposed ADRs and returns `operation: reject`,
+`result: rejected`. `deprecate` currently accepts only approved ADRs and returns
+`operation: deprecate`, `result: deprecated`. Both require explicit `--confirm`,
+nonempty `--actor` and `--rationale`. Deprecation also requires nonempty
+`--decision-gap` and `--existing-code-treatment`; explicitly state `None` when
+there is no decision gap. Agents obtain human authorization outside BADR;
+the command records the declaration without authenticating the actor.
+
+Rejection remains non-authoritative. Deprecation immediately withdraws direction
+for new work in this checkout: `list --directing` excludes the ADR and `show`
+reports `directs_new_work: false`. Neither command changes existing code,
+baseline files, production, or asserts existing-code conformance. Deprecated
+ADRs remain eligible for a later explicit supersession; the replacement command
+is still unavailable. Rejected/deprecated records cannot reopen through `edit`
+or `decide`, and their reasoning stays frozen. IDs and relationships are retained.
+
+Both commands update the quoted governed date to the actual UTC event date,
+append a dated lifecycle note with actor/rationale (plus gap/code treatment for
+deprecation), and append evidence automatically. Caller text is quoted in notes
+so embedded Markdown cannot create lifecycle headings. Exact decision-body bytes,
+all earlier note bytes, and receipts are preserved. A Markdown boundary that
+prevents appending a real final lifecycle section without changing the decision
+body (for example, no terminal newline or an unclosed fence) is refused before
+writing. Resolve such boundaries while proposed; approved reasoning needs a
+successor if a lifecycle note cannot be appended safely.
+
+These commands use complete-change validation, the shared lock/safe writer,
+partial-write/manual-repair reporting, and pending commit durability. Human
+output includes completed/pending paths and the proposed audit commit message;
+JSON exposes the same report fields. They never stage or commit automatically.

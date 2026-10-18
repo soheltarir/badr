@@ -383,6 +383,8 @@ pub(super) fn run(
                     "edit" => "edited",
                     "propose" => "proposed",
                     "decide" => "approved",
+                    "reject" => "rejected",
+                    "deprecate" => "deprecated",
                     _ => "created",
                 }
             }

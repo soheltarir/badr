@@ -706,6 +706,10 @@ fn rejected_and_withdrawn_records_keep_their_numeric_reservations() {
                 .into();
             event["event_id"] = format!("fixture-{operation}").into();
             event["operation"] = (*operation).into();
+            if *operation == "deprecate" {
+                event["decision_gap"] = "No replacement selected".into();
+                event["existing_code_treatment"] = "Retain existing code".into();
+            }
             event["actor"] = "Human".into();
             event["rationale"] = "Lifecycle fixture".into();
             event["confirmed"] = true.into();
@@ -1181,4 +1185,457 @@ fn approval_detects_baseline_and_external_content_changes_before_publication() {
         );
         assert!(!root.join(".badr.lock").exists());
     }
+}
+
+#[test]
+fn rejects_proposed_adr_preserving_reasoning_and_allocation() {
+    let dir = repo();
+    let root = dir.path();
+    ready_adr(root);
+    let before = check(run(root, &["show", "0001"]), 0);
+    let ledger = fs::read(root.join(".badr/evidence.jsonl")).unwrap();
+    let result = check(
+        run(
+            root,
+            &[
+                "reject",
+                "0001",
+                "--confirm",
+                "--actor",
+                "Human",
+                "--rationale",
+                "Prefer another option",
+            ],
+        ),
+        0,
+    );
+    assert_eq!(result["operation"], "reject");
+    assert_eq!(result["result"], "rejected");
+    assert_eq!(result["pending_commit_durability"], true);
+    let shown = check(run(root, &["show", "0001"]), 0);
+    assert_eq!(shown["records"][0]["status"], "rejected");
+    assert_eq!(shown["records"][0]["directs_new_work"], false);
+    assert_eq!(
+        shown["records"][0]["decision_body"],
+        before["records"][0]["decision_body"]
+    );
+    assert!(
+        fs::read(root.join(".badr/evidence.jsonl"))
+            .unwrap()
+            .starts_with(&ledger)
+    );
+    assert!(
+        fs::read_to_string(root.join(".badr/adrs/0001-decision.md"))
+            .unwrap()
+            .contains("Prefer another option")
+    );
+    check(run(root, &["validate"]), 0);
+    assert_eq!(
+        check(run(root, &["new", "adr", "next"]), 0)["affected_ids"],
+        serde_json::json!(["0002"])
+    );
+}
+
+#[test]
+fn deprecation_withdraws_branch_direction_and_retains_exact_body_notes_and_receipts() {
+    let dir = repo();
+    let root = dir.path();
+    let now: chrono::DateTime<chrono::Utc> = std::time::SystemTime::now().into();
+    let text = format!(
+        "---\nid: \"0001\"\nstatus: proposed\ndate: \"{}\"\n---\n{}",
+        now.format("%Y-%m-%d"),
+        include_str!("../src/templates/adr.md")
+            .replace("{{title}}", "decision")
+            .replace("TODO:", "Reviewed:")
+    )
+    .replace('\n', "\r\n");
+    let path = root.join(".badr/adrs/0001-decision.md");
+    let notes = "## Lifecycle notes\r\n\r\n### 2020-01-01 Preparation\r\nPrior note.\r\n";
+    let input = root.join("input.md");
+    fs::write(
+        &input,
+        text + "\r\n```md\r\n## Lifecycle notes\r\n```\r\n" + notes,
+    )
+    .unwrap();
+    check(
+        run(
+            root,
+            &[
+                "new",
+                "adr",
+                "decision",
+                "--content",
+                input.to_str().unwrap(),
+            ],
+        ),
+        0,
+    );
+    check(decide(root, "0001", &[]), 0);
+    commit(root, "Approved direction on baseline");
+    let baseline = git(root, &["rev-parse", "trunk"]);
+    git(root, &["switch", "-c", "withdraw"]);
+    fs::write(
+        root.join("existing.rs"),
+        "unchanged existing implementation\n",
+    )
+    .unwrap();
+    let before = check(run(root, &["show", "0001"]), 0);
+    let ledger = fs::read(root.join(".badr/evidence.jsonl")).unwrap();
+    let result = check(
+        run(
+            root,
+            &[
+                "deprecate",
+                "0001",
+                "--confirm",
+                "--actor",
+                "Human",
+                "--rationale",
+                "Direction no longer suitable",
+                "--decision-gap",
+                "Storage direction awaits successor",
+                "--existing-code-treatment",
+                "Retain until migration is authorized",
+            ],
+        ),
+        0,
+    );
+    assert_eq!(result["operation"], "deprecate");
+    assert_eq!(result["result"], "deprecated");
+    assert_eq!(result["pending_commit_durability"], true);
+    let shown = check(run(root, &["show", "0001"]), 0);
+    assert_eq!(shown["records"][0]["status"], "deprecated");
+    assert_eq!(shown["records"][0]["directs_new_work"], false);
+    assert_eq!(
+        shown["records"][0]["decision_body"],
+        before["records"][0]["decision_body"]
+    );
+    assert_eq!(
+        check(run(root, &["list", "--directing"]), 0)["records"],
+        serde_json::json!([])
+    );
+    let updated = fs::read_to_string(&path).unwrap();
+    assert!(updated.contains(notes));
+    assert!(updated.contains("Storage direction awaits successor"));
+    assert!(updated.contains("Retain until migration is authorized"));
+    let after = fs::read(root.join(".badr/evidence.jsonl")).unwrap();
+    assert!(after.starts_with(&ledger));
+    let receipt: Value =
+        serde_json::from_str(String::from_utf8(after).unwrap().lines().last().unwrap()).unwrap();
+    let approval: Value =
+        serde_json::from_str(String::from_utf8(ledger).unwrap().lines().last().unwrap()).unwrap();
+    assert_eq!(receipt["changes"][0]["approval_ref"], approval["event_id"]);
+    assert_eq!(
+        receipt["decision_gap"],
+        "Storage direction awaits successor"
+    );
+    assert_eq!(
+        receipt["existing_code_treatment"],
+        "Retain until migration is authorized"
+    );
+    assert!(updated.contains(&format!(
+        "date: \"{}\"",
+        &receipt["at"].as_str().unwrap()[..10]
+    )));
+    assert_eq!(
+        fs::read_to_string(root.join("existing.rs")).unwrap(),
+        "unchanged existing implementation\n"
+    );
+    assert_eq!(git(root, &["rev-parse", "trunk"]), baseline);
+    check(run(root, &["validate"]), 0);
+    commit(root, "Withdraw direction");
+    assert_eq!(
+        check(run(root, &["validate"]), 0)["pending_commit_durability"],
+        false
+    );
+    git(root, &["switch", "trunk"]);
+    assert_eq!(
+        check(run(root, &["list", "--directing"]), 0)["records"][0]["status"],
+        "approved"
+    );
+}
+
+fn withdraw(root: &Path, operation: &str, extra: &[&str]) -> Output {
+    let mut args = vec![
+        operation,
+        "0001",
+        "--confirm",
+        "--actor",
+        "Human",
+        "--rationale",
+        "Withdraw direction",
+    ];
+    if operation == "deprecate" {
+        args.extend([
+            "--decision-gap",
+            "None",
+            "--existing-code-treatment",
+            "Retain existing code",
+        ]);
+    }
+    args.extend_from_slice(extra);
+    run(root, &args)
+}
+
+#[test]
+fn withdrawals_refuse_missing_declarations_illegal_states_and_reopening_without_writes() {
+    for operation in ["reject", "deprecate"] {
+        let dir = repo();
+        let root = dir.path();
+        let path = ready_adr(root);
+        if operation == "deprecate" {
+            check(withdraw(root, operation, &[]), 2);
+            check(decide(root, "0001", &[]), 0);
+        } else {
+            check(withdraw(root, "deprecate", &[]), 2);
+        }
+        let mut required = vec![
+            "--confirm",
+            "--actor",
+            "Human",
+            "--rationale",
+            "Withdraw direction",
+        ];
+        if operation == "deprecate" {
+            required.extend([
+                "--decision-gap",
+                "None",
+                "--existing-code-treatment",
+                "Retain existing code",
+            ]);
+        }
+        let before = fs::read(&path).unwrap();
+        let ledger = fs::read(root.join(".badr/evidence.jsonl")).unwrap();
+        for flag in [
+            "--confirm",
+            "--actor",
+            "--rationale",
+            "--decision-gap",
+            "--existing-code-treatment",
+        ] {
+            let Some(index) = required.iter().position(|s| *s == flag) else {
+                continue;
+            };
+            let mut missing = required.clone();
+            missing.drain(index..index + if flag == "--confirm" { 1 } else { 2 });
+            let mut args = vec![operation, "0001"];
+            args.extend(missing);
+            check(run(root, &args), 2);
+            if flag != "--confirm" {
+                let mut blank = required.clone();
+                blank[index + 1] = " \n ";
+                let mut args = vec![operation, "0001"];
+                args.extend(blank);
+                check(run(root, &args), 2);
+            }
+            assert_eq!(fs::read(&path).unwrap(), before);
+            assert_eq!(fs::read(root.join(".badr/evidence.jsonl")).unwrap(), ledger);
+        }
+        check(withdraw(root, operation, &[]), 0);
+        let terminal = fs::read(&path).unwrap();
+        let ledger = fs::read(root.join(".badr/evidence.jsonl")).unwrap();
+        check(withdraw(root, "reject", &[]), 2);
+        check(withdraw(root, "deprecate", &[]), 2);
+        check(decide(root, "0001", &[]), 2);
+        let input = root.join("reopen.md");
+        fs::write(
+            &input,
+            String::from_utf8(terminal.clone()).unwrap().replace(
+                &format!(
+                    "status: {}",
+                    if operation == "reject" {
+                        "rejected"
+                    } else {
+                        "deprecated"
+                    }
+                ),
+                "status: proposed",
+            ),
+        )
+        .unwrap();
+        check(
+            run(
+                root,
+                &["edit", "0001", "--content", input.to_str().unwrap()],
+            ),
+            2,
+        );
+        fs::write(
+            &input,
+            String::from_utf8(terminal.clone())
+                .unwrap()
+                .replace("Reviewed:", "New reasoning:"),
+        )
+        .unwrap();
+        check(
+            run(
+                root,
+                &["edit", "0001", "--content", input.to_str().unwrap()],
+            ),
+            2,
+        );
+        assert_eq!(fs::read(&path).unwrap(), terminal);
+        assert_eq!(fs::read(root.join(".badr/evidence.jsonl")).unwrap(), ledger);
+        check(run(root, &["validate"]), 0);
+    }
+}
+
+#[test]
+fn withdrawals_report_partial_writes_and_preserve_precommit_replay() {
+    for operation in ["reject", "deprecate"] {
+        for (point, count) in [
+            ("before_apply", 0),
+            ("after_write_0", 1),
+            ("after_write_1", 2),
+            ("after_postvalidate", 2),
+        ] {
+            let dir = repo();
+            let root = dir.path();
+            ready_adr(root);
+            if operation == "deprecate" {
+                check(decide(root, "0001", &[]), 0);
+            }
+            let mut args = vec![
+                operation,
+                "0001",
+                "--confirm",
+                "--actor",
+                "Human",
+                "--rationale",
+                "Withdraw direction",
+            ];
+            if operation == "deprecate" {
+                args.extend([
+                    "--decision-gap",
+                    "None",
+                    "--existing-code-treatment",
+                    "Retain existing code",
+                ]);
+            }
+            let result = check(
+                Command::new(env!("CARGO_BIN_EXE_badr"))
+                    .arg("--repo")
+                    .arg(root)
+                    .arg("--json")
+                    .args(args)
+                    .env("BADR_TEST_FAIL_AT", point)
+                    .output()
+                    .unwrap(),
+                4,
+            );
+            let paths = [".badr/adrs/0001-decision.md", ".badr/evidence.jsonl"];
+            assert_eq!(
+                result["partial_write"]["completed"],
+                serde_json::json!(paths[..count])
+            );
+            assert_eq!(
+                result["partial_write"]["not_completed"],
+                serde_json::json!(paths[count..])
+            );
+            assert_eq!(root.join(".badr.lock").exists(), count > 0);
+            assert!(result["proposed_audit_commit_message"].is_null());
+            check(run(root, &["validate"]), if count == 1 { 2 } else { 0 });
+        }
+    }
+}
+
+#[test]
+fn withdrawal_quotes_caller_markdown_and_human_output_reports_audit_details() {
+    let dir = repo();
+    let root = dir.path();
+    ready_adr(root);
+    let output = Command::new(env!("CARGO_BIN_EXE_badr"))
+        .arg("--repo")
+        .arg(root)
+        .args([
+            "reject",
+            "0001",
+            "--confirm",
+            "--actor",
+            "Human",
+            "--rationale",
+            "Not selected\n\n## Lifecycle notes\n```\n### 2000-01-01",
+        ])
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(output.stderr.is_empty());
+    let text = String::from_utf8(output.stdout).unwrap();
+    assert!(text.contains("reject: rejected"));
+    assert!(text.contains("Completed writes:"));
+    assert!(text.contains("Pending audit commit: Some(true)"));
+    assert!(text.contains("Reject 0001"));
+    check(run(root, &["validate"]), 0);
+}
+
+#[test]
+fn withdrawals_refuse_markdown_boundaries_that_would_change_exact_reasoning() {
+    for operation in ["reject", "deprecate"] {
+        for boundary in ["missing-newline", "open-fence"] {
+            let dir = repo();
+            let root = dir.path();
+            let path = ready_adr(root);
+            let text = fs::read_to_string(&path).unwrap();
+            fs::write(
+                &path,
+                if boundary == "missing-newline" {
+                    text.trim_end_matches('\n').to_owned()
+                } else {
+                    text + "\n```md\n"
+                },
+            )
+            .unwrap();
+            if operation == "deprecate" {
+                check(decide(root, "0001", &[]), 0);
+            }
+            let before = fs::read(&path).unwrap();
+            let ledger = fs::read(root.join(".badr/evidence.jsonl")).unwrap();
+            let result = check(withdraw(root, operation, &[]), 2);
+            assert_eq!(result["partial_write"]["completed"], serde_json::json!([]));
+            assert_eq!(fs::read(&path).unwrap(), before);
+            assert_eq!(fs::read(root.join(".badr/evidence.jsonl")).unwrap(), ledger);
+            check(run(root, &["validate"]), 0);
+        }
+    }
+}
+
+#[test]
+fn adr_deprecation_receipts_require_gap_and_existing_code_treatment() {
+    let dir = repo();
+    let root = dir.path();
+    ready_adr(root);
+    check(decide(root, "0001", &[]), 0);
+    check(withdraw(root, "deprecate", &[]), 0);
+    let path = root.join(".badr/evidence.jsonl");
+    let original = fs::read_to_string(&path).unwrap();
+    let events: Vec<Value> = original
+        .lines()
+        .map(|line| serde_json::from_str(line).unwrap())
+        .collect();
+    for key in ["decision_gap", "existing_code_treatment"] {
+        for value in [None, Some(serde_json::json!(" \n "))] {
+            let mut changed = events.clone();
+            let event = changed.last_mut().unwrap();
+            if let Some(value) = value {
+                event[key] = value;
+            } else {
+                event.as_object_mut().unwrap().remove(key);
+            }
+            fs::write(
+                &path,
+                changed
+                    .iter()
+                    .map(|event| event.to_string() + "\n")
+                    .collect::<String>(),
+            )
+            .unwrap();
+            check(run(root, &["validate"]), 2);
+        }
+    }
+    fs::write(&path, original).unwrap();
+    check(run(root, &["validate"]), 0);
 }

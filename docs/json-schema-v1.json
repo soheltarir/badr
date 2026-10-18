@@ -37,7 +37,9 @@
         "new_adr",
         "propose",
         "edit",
-        "decide"
+        "decide",
+        "reject",
+        "deprecate"
       ]
     },
     "result": {
@@ -50,7 +52,9 @@
         "ok",
         "invalid",
         "incomplete",
-        "operational_failure"
+        "operational_failure",
+        "rejected",
+        "deprecated"
       ]
     },
     "exit_code": {
