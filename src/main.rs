@@ -46,6 +46,12 @@ enum Operation {
     Propose(repository::authoring::Proposal),
     /// Approve after human authorization outside BADR; records a declaration, not authentication.
     Decide(repository::authoring::Approval),
+    /// Add a directed ordinary related reference with explicit authorization.
+    Link(repository::relationships::Link),
+    /// Remove a directed ordinary related reference with explicit authorization.
+    Unlink(repository::relationships::Link),
+    /// Traverse outgoing ordinary related references; cycles are visited once.
+    Related { id: String },
     /// Immediately activate an approved BRR through explicit human authorization.
     Activate(repository::authoring::Proposal),
     /// Immediately deprecate an effective BRR, exposing any policy gap.
@@ -88,6 +94,9 @@ fn main() -> ExitCode {
         }
     };
     let report = match cli.command {
+        Operation::Link(link) => repository::relationships::run(&cli.repo, link, false),
+        Operation::Unlink(link) => repository::relationships::run(&cli.repo, link, true),
+        Operation::Related { id } => repository::relationships::related(&cli.repo, &id),
         Operation::Activate(choice) => {
             repository::authoring::lifecycle(&cli.repo, "activate", choice)
         }
@@ -135,6 +144,8 @@ fn emit(report: Report, json: bool) -> ExitCode {
                 | "propose"
                 | "edit"
                 | "decide"
+                | "link"
+                | "unlink"
                 | "activate"
                 | "deprecate"
                 | "retire"
@@ -160,6 +171,11 @@ fn emit(report: Report, json: bool) -> ExitCode {
             }
         }
         for record in &report.records {
+            if report.operation == "related" {
+                for target in repository::relationships::targets(record) {
+                    output.push_str(&format!("{} -> {target}\n", record.id()));
+                }
+            }
             match record {
                 repository::Record::Brr(record) => {
                     output.push_str(&format!(

@@ -38,6 +38,9 @@
         "propose",
         "edit",
         "decide",
+        "link",
+        "unlink",
+        "related",
         "activate",
         "deprecate",
         "retire"
@@ -49,6 +52,8 @@
         "edited",
         "proposed",
         "approved",
+        "linked",
+        "unlinked",
         "effective",
         "deprecated",
         "retired",

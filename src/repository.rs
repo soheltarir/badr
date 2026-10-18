@@ -10,6 +10,8 @@ pub(crate) mod editing;
 mod evidence;
 #[path = "mutation.rs"]
 mod mutation;
+#[path = "relationships.rs"]
+pub(crate) mod relationships;
 
 use serde::{Deserialize, Serialize};
 use std::{
@@ -64,7 +66,7 @@ pub(crate) enum Record {
     Adr(crate::adr::Record),
 }
 impl Record {
-    fn id(&self) -> &str {
+    pub(crate) fn id(&self) -> &str {
         match self {
             Self::Brr(r) => &r.metadata.id,
             Self::Adr(r) => &r.metadata.id,
