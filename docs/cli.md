@@ -610,8 +610,7 @@ Rejection remains non-authoritative. Deprecation immediately withdraws direction
 for new work in this checkout: `list --directing` excludes the ADR and `show`
 reports `directs_new_work: false`. Neither command changes existing code,
 baseline files, production, or asserts existing-code conformance. Deprecated
-ADRs remain eligible for a later explicit supersession; the replacement command
-is still unavailable. Rejected/deprecated records cannot reopen through `edit`
+ADRs remain eligible for later explicit supersession through `supersede`. Rejected/deprecated records cannot reopen through `edit`
 or `decide`, and their reasoning stays frozen. IDs and relationships are retained.
 
 Both commands update the quoted governed date to the actual UTC event date,
@@ -628,3 +627,54 @@ These commands use complete-change validation, the shared lock/safe writer,
 partial-write/manual-repair reporting, and pending commit durability. Human
 output includes completed/pending paths and the proposed audit commit message;
 JSON exposes the same report fields. They never stage or commit automatically.
+
+
+## Explicit ADR replacement
+
+```sh
+badr supersede --predecessor 0001 --successor 0002 --complete \
+  --confirm --actor "Human" --rationale "0002 completely replaces 0001"
+
+# Approve proposed successors and complete replacement as one authorized group.
+badr supersede --predecessor 0001 --successor 0002 --successor 0003 --complete \
+  --approve-successors --reviewed --confirm --actor "Human" \
+  --rationale "Together 0002 and 0003 completely replace 0001"
+```
+
+Repeat `--predecessor` for consolidation and `--successor` for splitting. Both
+lists are required and must contain distinct, disjoint, actual ADR IDs. Every
+listed successor completely replaces every listed predecessor as a group.
+`--complete` declares the entire intended replacement set; partial or intended
+replacement belongs in reasoning or ordinary related links. BADR records this
+human declaration and checks structure; it cannot assess semantic completeness.
+Neither ordinary approval nor related links infer replacement.
+
+Predecessors must be approved or deprecated. Successors must be approved, or
+proposed when `--approve-successors --reviewed` is supplied. Coordinated approval
+uses the same review declaration and unresolved TODO/TBD/FIXME checks as `decide`.
+Already-approved successors retain their existing approval references; proposed
+successors reference the new group receipt. Rejected, superseded, and deprecated
+successors cannot be reopened. `--reviewed` requires `--approve-successors`.
+This command currently supports ADR replacement only.
+
+The complete intended state is validated before publication, including evidence,
+identity, statuses, exact reciprocal edges, and an acyclic replacement graph.
+Each record retains previous links, exact decision-body bytes, prior notes, and
+receipts. Every affected ADR receives the actual UTC date and a dated lifecycle
+note naming both complete sets and actor/rationale. Completed participation on
+either side permanently blocks approval reset. Later successor deprecation
+retains history and never revives predecessors or changes existing code.
+
+JSON returns `operation: supersede`, `result: superseded`, and all `affected_ids`
+in stable ID order. The evidence operation is `supersede` for already-approved
+successors or `decide` for coordinated approval, with `replacement` containing
+`predecessors`, `successors`, and `complete: true`. Evidence includes every
+changed revision, actor, rationale, confirmation, actual UTC time, checkout
+branch, baseline commit, and applicable approval references. Human output
+includes the shared completed/remaining write paths and proposed audit commit.
+
+Publication uses the shared safe writer and postvalidation, one file at a time,
+with evidence appended last. Failure reports exact completed/remaining paths;
+once publication starts the repair lock blocks mutations until manual repair.
+The group is not crash-atomic and has no automatic rollback or recovery.
+The command never stages or commits; pending audit durability remains explicit.

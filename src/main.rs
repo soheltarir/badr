@@ -46,6 +46,8 @@ enum Operation {
     Propose(repository::authoring::Proposal),
     /// Approve after human authorization outside BADR; records a declaration, not authentication.
     Decide(repository::authoring::Approval),
+    /// Completely replace ADRs with explicitly declared approved successors.
+    Supersede(repository::replacement::Replacement),
     /// Add a directed ordinary related reference with explicit authorization.
     Link(repository::relationships::Link),
     /// Remove a directed ordinary related reference with explicit authorization.
@@ -96,6 +98,7 @@ fn main() -> ExitCode {
         }
     };
     let report = match cli.command {
+        Operation::Supersede(choice) => repository::replacement::run(&cli.repo, choice),
         Operation::Link(link) => repository::relationships::run(&cli.repo, link, false),
         Operation::Unlink(link) => repository::relationships::run(&cli.repo, link, true),
         Operation::Related { id } => repository::relationships::related(&cli.repo, &id),
@@ -145,6 +148,7 @@ fn emit(report: Report, json: bool) -> ExitCode {
                 | "propose"
                 | "edit"
                 | "decide"
+                | "supersede"
                 | "link"
                 | "unlink"
                 | "activate"

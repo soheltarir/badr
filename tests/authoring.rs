@@ -2085,3 +2085,428 @@ fn shared_deprecation_preserves_brr_calls_and_rejects_adr_only_declarations() {
     check(lifecycle(root, "deprecate", "BRR-ORD-001"), 0);
     check(run(root, &["validate"]), 0);
 }
+
+fn replacement(root: &Path, predecessors: &[&str], successors: &[&str], extra: &[&str]) -> Output {
+    let mut args = vec![
+        "supersede",
+        "--complete",
+        "--confirm",
+        "--actor",
+        "Human",
+        "--rationale",
+        "Complete replacement reviewed",
+    ];
+    for id in predecessors {
+        args.extend(["--predecessor", id]);
+    }
+    for id in successors {
+        args.extend(["--successor", id]);
+    }
+    args.extend_from_slice(extra);
+    run(root, &args)
+}
+fn replacement_records(root: &Path, count: usize) {
+    for n in 1..=count {
+        check(run(root, &["new", "adr", &format!("choice-{n}")]), 0);
+        let path = format!(".badr/adrs/{n:04}-choice-{n}.md");
+        let input = root.join("input.md");
+        fs::write(
+            &input,
+            fs::read_to_string(root.join(path))
+                .unwrap()
+                .replace("TODO:", "Reviewed:"),
+        )
+        .unwrap();
+        check(
+            run(
+                root,
+                &[
+                    "edit",
+                    &format!("{n:04}"),
+                    "--content",
+                    input.to_str().unwrap(),
+                ],
+            ),
+            0,
+        );
+    }
+}
+#[test]
+fn explicitly_replaces_an_approved_adr_and_preserves_reasoning_and_evidence() {
+    let dir = repo();
+    let root = dir.path();
+    replacement_records(root, 2);
+    check(decide(root, "0001", &[]), 0);
+    check(decide(root, "0002", &[]), 0);
+    let before = check(run(root, &["show", "0001"]), 0);
+    let ledger = fs::read(root.join(".badr/evidence.jsonl")).unwrap();
+    let result = check(replacement(root, &["0001"], &["0002"], &[]), 0);
+    assert_eq!(result["operation"], "supersede");
+    assert_eq!(result["result"], "superseded");
+    assert_eq!(result["affected_ids"], serde_json::json!(["0001", "0002"]));
+    let old = check(run(root, &["show", "0001"]), 0);
+    let new = check(run(root, &["show", "0002"]), 0);
+    assert_eq!(old["records"][0]["status"], "superseded");
+    assert_eq!(old["records"][0]["directs_new_work"], false);
+    assert_eq!(
+        old["records"][0]["decision_body"],
+        before["records"][0]["decision_body"]
+    );
+    assert_eq!(
+        old["records"][0]["superseded_by"],
+        serde_json::json!(["0002"])
+    );
+    assert_eq!(new["records"][0]["supersedes"], serde_json::json!(["0001"]));
+    assert!(
+        fs::read(root.join(".badr/evidence.jsonl"))
+            .unwrap()
+            .starts_with(&ledger)
+    );
+    check(run(root, &["validate"]), 0);
+}
+
+#[test]
+fn replacement_coordinates_proposed_and_approved_successors_in_one_receipt() {
+    let dir = repo();
+    let root = dir.path();
+    replacement_records(root, 3);
+    check(decide(root, "0001", &[]), 0);
+    check(decide(root, "0002", &[]), 0);
+    let previous: Value = serde_json::from_str(
+        fs::read_to_string(root.join(".badr/evidence.jsonl"))
+            .unwrap()
+            .lines()
+            .last()
+            .unwrap(),
+    )
+    .unwrap();
+    check(
+        replacement(
+            root,
+            &["0001"],
+            &["0002", "0003"],
+            &["--approve-successors", "--reviewed"],
+        ),
+        0,
+    );
+    let ledger = fs::read_to_string(root.join(".badr/evidence.jsonl")).unwrap();
+    let receipt: Value = serde_json::from_str(ledger.lines().last().unwrap()).unwrap();
+    assert_eq!(receipt["operation"], "decide");
+    assert_eq!(receipt["reviewed"], true);
+    assert_eq!(
+        receipt["replacement"],
+        serde_json::json!({"predecessors":["0001"],"successors":["0002","0003"],"complete":true})
+    );
+    assert_eq!(receipt["changes"][1]["approval_ref"], previous["event_id"]);
+    assert_eq!(receipt["changes"][2]["approval_ref"], receipt["event_id"]);
+    assert_eq!(
+        check(run(root, &["list", "--directing"]), 0)["records"]
+            .as_array()
+            .unwrap()
+            .len(),
+        2
+    );
+    commit(root, "Complete replacement group");
+    check(run(root, &["validate"]), 0);
+}
+
+#[test]
+fn replacement_consolidates_deprecated_predecessors_retains_notes_and_never_revives() {
+    let dir = repo();
+    let root = dir.path();
+    git(root, &["switch", "-c", "replacement"]);
+    replacement_records(root, 3);
+    for id in ["0001", "0002", "0003"] {
+        check(decide(root, id, &[]), 0);
+    }
+    check(withdraw(root, "deprecate", &[]), 0);
+    let previous = fs::read_to_string(root.join(".badr/adrs/0001-choice-1.md")).unwrap();
+    check(replacement(root, &["0002", "0001"], &["0003"], &[]), 0);
+    let changed = fs::read_to_string(root.join(".badr/adrs/0001-choice-1.md")).unwrap();
+    let notes = previous.split_once("## Lifecycle notes").unwrap().1;
+    assert!(
+        changed
+            .split_once("## Lifecycle notes")
+            .unwrap()
+            .1
+            .starts_with(notes)
+    );
+    assert_eq!(
+        check(run(root, &["show", "0003"]), 0)["records"][0]["supersedes"],
+        serde_json::json!(["0001", "0002"])
+    );
+    // Neither side may escape completed replacement by resetting its approval.
+    for n in 1..=3 {
+        let input = root.join("input.md");
+        fs::write(
+            &input,
+            fs::read_to_string(root.join(format!(".badr/adrs/{n:04}-choice-{n}.md")))
+                .unwrap()
+                .replace("Reviewed:", "Changed:"),
+        )
+        .unwrap();
+        check(
+            run(
+                root,
+                &[
+                    "edit",
+                    &format!("{n:04}"),
+                    "--content",
+                    input.to_str().unwrap(),
+                ],
+            ),
+            2,
+        );
+        check(decide(root, &format!("{n:04}"), &[]), 2);
+    }
+    check(
+        run(
+            root,
+            &[
+                "deprecate",
+                "0003",
+                "--confirm",
+                "--actor",
+                "Human",
+                "--rationale",
+                "Withdraw successor",
+                "--decision-gap",
+                "Explicit gap",
+                "--existing-code-treatment",
+                "Retain",
+            ],
+        ),
+        0,
+    );
+    assert_eq!(
+        check(run(root, &["list", "--directing"]), 0)["records"],
+        serde_json::json!([])
+    );
+    let old = check(run(root, &["show", "0001"]), 0);
+    assert_eq!(old["records"][0]["status"], "superseded");
+    assert_eq!(
+        old["records"][0]["superseded_by"],
+        serde_json::json!(["0003"])
+    );
+    let third = check(run(root, &["show", "0003"]), 0);
+    assert_eq!(
+        third["records"][0]["supersedes"],
+        serde_json::json!(["0001", "0002"])
+    );
+    check(replacement(root, &["0003"], &["0001"], &[]), 2);
+    check(run(root, &["validate"]), 0);
+}
+
+#[test]
+fn replacement_refuses_incomplete_declarations_invalid_targets_and_unapproved_successors_without_writes()
+ {
+    let dir = repo();
+    let root = dir.path();
+    replacement_records(root, 2);
+    check(decide(root, "0001", &[]), 0);
+    let snapshot = fs::read(root.join(".badr/evidence.jsonl")).unwrap();
+    for (old, new, extra) in [
+        (vec!["0001"], vec!["0002"], vec![]),
+        (vec!["0002"], vec!["0001"], vec![]),
+        (vec!["0001"], vec!["9999"], vec![]),
+        (vec!["0001"], vec!["00001"], vec![]),
+        (vec!["0001"], vec!["BRR-ORD-001"], vec![]),
+        (vec!["0001"], vec!["0001"], vec![]),
+        (vec!["0001", "0001"], vec!["0002"], vec![]),
+        (vec!["0001"], vec!["0002", "0002"], vec![]),
+        (vec!["0001"], vec!["0002"], vec!["--approve-successors"]),
+        (vec!["0001"], vec!["0002"], vec!["--reviewed"]),
+    ] {
+        check(replacement(root, &old, &new, &extra), 2);
+    }
+    for missing in [
+        "--complete",
+        "--confirm",
+        "--actor",
+        "--rationale",
+        "--predecessor",
+        "--successor",
+        "--reviewed",
+    ] {
+        let mut args = vec![
+            "supersede",
+            "--predecessor",
+            "0001",
+            "--successor",
+            "0002",
+            "--complete",
+            "--confirm",
+            "--actor",
+            "Human",
+            "--rationale",
+            "Replacement",
+            "--approve-successors",
+            "--reviewed",
+        ];
+        let index = args.iter().position(|s| *s == missing).unwrap();
+        args.remove(index);
+        if ["--actor", "--rationale", "--predecessor", "--successor"].contains(&missing) {
+            args.remove(index);
+        }
+        check(run(root, &args), 2);
+    }
+    assert_eq!(
+        fs::read(root.join(".badr/evidence.jsonl")).unwrap(),
+        snapshot
+    );
+    assert!(!root.join(".badr.lock").exists());
+    check(run(root, &["validate"]), 0);
+    // Coordinated approval uses the same unresolved-gap checks as ordinary decide.
+    let input = root.join("input.md");
+    fs::write(
+        &input,
+        fs::read_to_string(root.join(".badr/adrs/0002-choice-2.md"))
+            .unwrap()
+            .replace("Reviewed:", "TODO:"),
+    )
+    .unwrap();
+    check(
+        run(
+            root,
+            &["edit", "0002", "--content", input.to_str().unwrap()],
+        ),
+        0,
+    );
+    check(
+        replacement(
+            root,
+            &["0001"],
+            &["0002"],
+            &["--approve-successors", "--reviewed"],
+        ),
+        2,
+    );
+}
+
+#[test]
+fn replacement_faults_report_exact_group_progress_and_retain_repair_lock() {
+    let paths = [
+        ".badr/adrs/0001-choice-1.md",
+        ".badr/adrs/0002-choice-2.md",
+        ".badr/evidence.jsonl",
+    ];
+    for (point, count) in [
+        ("before_apply", 0),
+        ("after_write_0", 1),
+        ("after_write_1", 2),
+        ("after_write_2", 3),
+        ("before_postvalidate", 3),
+        ("after_postvalidate", 3),
+    ] {
+        let dir = repo();
+        let root = dir.path();
+        replacement_records(root, 2);
+        check(decide(root, "0001", &[]), 0);
+        let result = check(
+            Command::new(env!("CARGO_BIN_EXE_badr"))
+                .arg("--repo")
+                .arg(root)
+                .arg("--json")
+                .args([
+                    "supersede",
+                    "--predecessor",
+                    "0001",
+                    "--successor",
+                    "0002",
+                    "--complete",
+                    "--approve-successors",
+                    "--reviewed",
+                    "--confirm",
+                    "--actor",
+                    "Human",
+                    "--rationale",
+                    "Replacement",
+                ])
+                .env("BADR_TEST_FAIL_AT", point)
+                .output()
+                .unwrap(),
+            4,
+        );
+        assert_eq!(
+            result["partial_write"]["completed"],
+            serde_json::json!(paths[..count])
+        );
+        assert_eq!(
+            result["partial_write"]["not_completed"],
+            serde_json::json!(paths[count..])
+        );
+        assert_eq!(result["success"], false);
+        assert_eq!(root.join(".badr.lock").exists(), count > 0);
+        if count > 0 {
+            check(replacement(root, &["0001"], &["0002"], &[]), 4);
+        }
+    }
+}
+
+#[test]
+fn replacement_approves_split_successors_and_retains_earlier_replacement_edges() {
+    let dir = repo();
+    let root = dir.path();
+    replacement_records(root, 4);
+    check(decide(root, "0001", &[]), 0);
+    check(
+        replacement(
+            root,
+            &["0001"],
+            &["0002", "0003"],
+            &["--approve-successors", "--reviewed"],
+        ),
+        0,
+    );
+    let second = fs::read_to_string(root.join(".badr/adrs/0002-choice-2.md")).unwrap();
+    check(decide(root, "0004", &[]), 0);
+    let output = Command::new(env!("CARGO_BIN_EXE_badr"))
+        .arg("--repo")
+        .arg(root)
+        .args([
+            "supersede",
+            "--predecessor",
+            "0002",
+            "--successor",
+            "0004",
+            "--complete",
+            "--confirm",
+            "--actor",
+            "Human",
+            "--rationale",
+            "Complete successor replacement",
+        ])
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(stdout.contains("supersede: superseded\n"));
+    assert!(stdout.contains("Completed writes:"));
+    assert!(stdout.contains("Pending audit commit: Some(true)"));
+    let after = check(run(root, &["show", "0002"]), 0);
+    assert_eq!(
+        after["records"][0]["supersedes"],
+        serde_json::json!(["0001"])
+    );
+    assert_eq!(
+        after["records"][0]["superseded_by"],
+        serde_json::json!(["0004"])
+    );
+    let changed = fs::read_to_string(root.join(".badr/adrs/0002-choice-2.md")).unwrap();
+    assert!(
+        changed
+            .split_once("## Lifecycle notes")
+            .unwrap()
+            .1
+            .starts_with(second.split_once("## Lifecycle notes").unwrap().1)
+    );
+    let before = fs::read(root.join(".badr/evidence.jsonl")).unwrap();
+    check(replacement(root, &["0004"], &["0001"], &[]), 2);
+    assert_eq!(fs::read(root.join(".badr/evidence.jsonl")).unwrap(), before);
+    commit(root, "Retain chained replacement history");
+    check(run(root, &["validate"]), 0);
+}

@@ -12,6 +12,8 @@ mod evidence;
 mod mutation;
 #[path = "relationships.rs"]
 pub(crate) mod relationships;
+#[path = "replacement.rs"]
+pub(crate) mod replacement;
 
 use serde::{Deserialize, Serialize};
 use std::{
