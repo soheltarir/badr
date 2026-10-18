@@ -469,5 +469,27 @@ fn frozen_brr_links_preserve_rule_and_cannot_link_business_rules() {
     let after = check(run(root, &["show", "BRR-ORD-001"]), 0);
     assert_eq!(before["records"][0], after["records"][0]);
     check(relate(root, "link", "BRR-ORD-001", "BRR-ORD-001"), 2);
+    for operation in ["activate", "deprecate"] {
+        check(
+            run(
+                root,
+                &[
+                    operation,
+                    "BRR-ORD-001",
+                    "--confirm",
+                    "--actor",
+                    "Human",
+                    "--rationale",
+                    "Apply reviewed lifecycle choice",
+                ],
+            ),
+            0,
+        );
+        let before = check(run(root, &["show", "BRR-ORD-001"]), 0);
+        check(relate(root, "link", "BRR-ORD-001", "0001"), 0);
+        check(relate(root, "unlink", "BRR-ORD-001", "0001"), 0);
+        let after = check(run(root, &["show", "BRR-ORD-001"]), 0);
+        assert_eq!(before["records"][0], after["records"][0]);
+    }
     check(run(root, &["validate"]), 0);
 }

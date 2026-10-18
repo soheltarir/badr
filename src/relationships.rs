@@ -115,8 +115,13 @@ pub(crate) fn run(target: &Path, link: Link, remove: bool) -> Report {
             ));
         }
         let mut header = yaml_serde::to_string(&metadata).map_err(|e| e.to_string())?;
-        if matches!(&record, Record::Adr(_)) {
-            header = header.replace(&format!("date: {today}\n"), &format!("date: \"{today}\"\n"));
+        for key in ["date", "effective_from", "effective_until"] {
+            if let Some(value) = metadata[key].as_str() {
+                header = header.replace(
+                    &format!("{key}: {value}\n"),
+                    &format!("{key}: \"{value}\"\n"),
+                );
+            }
         }
         let text = format!("---\n{header}---\n{body}");
         let changed = authoring::parse(&text, record.path())?;
@@ -124,10 +129,6 @@ pub(crate) fn run(target: &Path, link: Link, remove: bool) -> Report {
             return Err("Relationship updates must preserve exact body bytes; ADR lifecycle notes need an existing line boundary".into());
         }
         let mut revision = authoring::change(&changed, Some(authoring::state(&record).0));
-        if let Record::Brr(r) = &record {
-            revision["effective_from"] = serde_json::json!(r.metadata.effective_from);
-            revision["effective_until"] = serde_json::json!(r.metadata.effective_until);
-        }
         let ledger = bytes(expected, ".badr/evidence.jsonl").ok_or("Missing evidence")?;
         for line in std::str::from_utf8(&ledger)
             .map_err(|e| e.to_string())?

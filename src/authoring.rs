@@ -211,6 +211,8 @@ pub(super) fn change(record: &Record, from: Option<&str>) -> serde_json::Value {
     let mut value = serde_json::json!({"id":record.id(),"path":record.path(),"from":from,"to":status,"body_sha256":digest(body)});
     match record {
         Record::Brr(r) => {
+            value["effective_from"] = serde_json::json!(r.metadata.effective_from);
+            value["effective_until"] = serde_json::json!(r.metadata.effective_until);
             value["related"] = serde_json::json!(r.metadata.related_architecture_decisions);
             value["supersedes"] = serde_json::json!(r.metadata.supersedes);
             value["superseded_by"] = serde_json::json!(r.metadata.superseded_by);
@@ -420,6 +422,74 @@ pub(crate) fn decide(target: &Path, approval: Approval) -> Report {
             affected_ids: vec![id.clone()],
             message: format!(
                 "Approve {id}\n\nActor: {actor}\nRationale: {rationale}\nReview: applicable content and gaps reviewed and resolved\nBaseline: {}\nEvidence: {}",
+                report.baseline_commit.as_deref().unwrap(),
+                event["event_id"].as_str().unwrap()
+            ),
+        })
+    })
+}
+
+pub(crate) fn lifecycle(target: &Path, operation: &str, choice: Proposal) -> Report {
+    let Proposal {
+        id,
+        confirm,
+        actor,
+        rationale,
+    } = choice;
+    if !confirm || actor.trim().is_empty() || rationale.trim().is_empty() {
+        return Report::invalid(operation, "invalid_lifecycle_arguments",
+            "Require --confirm, nonempty --actor and --rationale. Agents obtain human authorization outside BADR; this records the caller's declaration.".into());
+    }
+    mutation::run(target, operation, |root, report, expected| {
+        let record = report
+            .records
+            .iter()
+            .find(|r| r.id() == id)
+            .ok_or("Record not found")?;
+        let Record::Brr(rule) = record else {
+            return Err("This operation applies only to BRRs".into());
+        };
+        let (from, to, time_key) = match operation {
+            "activate" => ("approved", "effective", "effective_from"),
+            "deprecate" => ("effective", "deprecated", "effective_until"),
+            "retire" => ("effective", "retired", "effective_until"),
+            _ => return Err("Unsupported BRR lifecycle operation".into()),
+        };
+        if rule.metadata.status != from {
+            return Err(format!("{operation} requires a {from} BRR").into());
+        }
+        let mut event = event(
+            root,
+            report,
+            operation,
+            Some((&actor, &rationale)),
+            serde_json::json!({}),
+        )?;
+        let mut metadata = serde_json::to_value(&rule.metadata).map_err(|e| e.to_string())?;
+        metadata["status"] = to.into();
+        metadata[time_key] = event["at"].clone();
+        let mut header = yaml_serde::to_string(&metadata).map_err(|e| e.to_string())?;
+        for key in ["effective_from", "effective_until"] {
+            if let Some(time) = metadata[key].as_str() {
+                header =
+                    header.replace(&format!("{key}: {time}\n"), &format!("{key}: \"{time}\"\n"));
+            }
+        }
+        let text = format!("---\n{header}---\n{}", rule.body);
+        let changed = parse(&text, &rule.path)?;
+        let mut revision = change(&changed, Some(&rule.metadata.status));
+        let ledger = String::from_utf8(bytes(expected, LEDGER).ok_or("Missing evidence")?)
+            .map_err(|e| e.to_string())?;
+        revision["approval_ref"] = evidence::approval_reference(&ledger, &id)?.into();
+        event["changes"] = serde_json::json!([revision]);
+        Ok(Plan {
+            writes: vec![
+                (rule.path.clone(), text.into_bytes()),
+                (LEDGER.into(), append(expected, &event)?),
+            ],
+            affected_ids: vec![id.clone()],
+            message: format!(
+                "{operation} {id}\n\nActor: {actor}\nRationale: {rationale}\nBaseline: {}\nEvidence: {}",
                 report.baseline_commit.as_deref().unwrap(),
                 event["event_id"].as_str().unwrap()
             ),

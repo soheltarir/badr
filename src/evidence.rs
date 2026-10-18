@@ -1392,3 +1392,17 @@ pub(super) fn reserved_ids(root: &Path) -> Result<Vec<String>, super::Failure> {
     }
     Ok(ids)
 }
+
+// The writer validates the ledger before asking for the current approval reference.
+pub(super) fn approval_reference(text: &str, id: &str) -> Result<String, super::Failure> {
+    for line in text.lines().rev().filter(|line| !line.trim().is_empty()) {
+        let event: Event = serde_json::from_str(line).map_err(|e| e.to_string())?;
+        if let Some(change) = event.changes.iter().find(|c| c.id == id) {
+            return change
+                .approval_ref
+                .clone()
+                .ok_or_else(|| "Missing active approval receipt".into());
+        }
+    }
+    Err("Missing active approval receipt".into())
+}

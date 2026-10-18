@@ -40,7 +40,10 @@
         "decide",
         "link",
         "unlink",
-        "related"
+        "related",
+        "activate",
+        "deprecate",
+        "retire"
       ]
     },
     "result": {
@@ -51,6 +54,9 @@
         "approved",
         "linked",
         "unlinked",
+        "effective",
+        "deprecated",
+        "retired",
         "unchanged",
         "ok",
         "invalid",

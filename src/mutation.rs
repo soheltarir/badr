@@ -385,6 +385,9 @@ pub(super) fn run(
                     "decide" => "approved",
                     "link" => "linked",
                     "unlink" => "unlinked",
+                    "activate" => "effective",
+                    "deprecate" => "deprecated",
+                    "retire" => "retired",
                     _ => "created",
                 }
             }

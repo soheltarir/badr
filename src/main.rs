@@ -52,6 +52,12 @@ enum Operation {
     Unlink(repository::relationships::Link),
     /// Traverse outgoing ordinary related references; cycles are visited once.
     Related { id: String },
+    /// Immediately activate an approved BRR through explicit human authorization.
+    Activate(repository::authoring::Proposal),
+    /// Immediately deprecate an effective BRR, exposing any policy gap.
+    Deprecate(repository::authoring::Proposal),
+    /// Immediately retire an effective BRR, exposing any policy gap.
+    Retire(repository::authoring::Proposal),
     /// Inspect managed records with explicit applicability selection.
     List {
         #[command(flatten)]
@@ -91,6 +97,13 @@ fn main() -> ExitCode {
         Operation::Link(link) => repository::relationships::run(&cli.repo, link, false),
         Operation::Unlink(link) => repository::relationships::run(&cli.repo, link, true),
         Operation::Related { id } => repository::relationships::related(&cli.repo, &id),
+        Operation::Activate(choice) => {
+            repository::authoring::lifecycle(&cli.repo, "activate", choice)
+        }
+        Operation::Deprecate(choice) => {
+            repository::authoring::lifecycle(&cli.repo, "deprecate", choice)
+        }
+        Operation::Retire(choice) => repository::authoring::lifecycle(&cli.repo, "retire", choice),
         Operation::Edit(edit) => repository::editing::run(&cli.repo, edit),
         Operation::Decide(approval) => repository::authoring::decide(&cli.repo, approval),
         Operation::Propose(proposal) => repository::authoring::propose(&cli.repo, proposal),
@@ -133,6 +146,9 @@ fn emit(report: Report, json: bool) -> ExitCode {
                 | "decide"
                 | "link"
                 | "unlink"
+                | "activate"
+                | "deprecate"
+                | "retire"
         ) {
             output.push_str(&format!(
                 "Completed writes: {:?}\nNot completed: {:?}\nPending audit commit: {:?}\n",

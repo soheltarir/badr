@@ -3,8 +3,8 @@
 BADR implements initialization and read-only BRR/ADR inspection and structural
 validation, operation-evidence replay, exact frozen-body checks, and retained
 Git revision checks, governed domain registration, record creation, BRR proposal,
-ordinary record editing, and explicit approval. Activation, replacement, and the
-remaining lifecycle commands remain unavailable.
+ordinary record editing, explicit approval, and immediate BRR activation/withdrawal.
+Replacement and the remaining lifecycle commands remain unavailable.
 See the [versioned evidence contract](evidence.md) for the event schema and
 coverage limits.
 
@@ -152,13 +152,14 @@ there are no timestamps or random operation identifiers in these read reports.
 The same repository state produces the same JSON bytes.
 
 - `schema_version`: integer `1`; breaking contract changes require a new version.
-- `operation`: `init`, `domain_add`, `new_brr`, `new_adr`, `propose`, `edit`, `list`,
+- `operation`: `init`, `domain_add`, `new_brr`, `new_adr`, `propose`, `edit`, `decide`,
+  `activate`, `deprecate`, `retire`, `list`,
   `show`, `validate`, or `arguments`.
 - `success`: true only for exit 0.
-- `result`: `created`/`unchanged` for successful init, `created` for registration/creation, `proposed` for BRR proposal, `edited`/`unchanged` for editing, `ok` for successful
+- `result`: `created`/`unchanged` for successful init, `created` for registration/creation, `proposed` for BRR proposal, `edited`/`unchanged` for editing, `approved` for approval, `effective`/`deprecated`/`retired` for BRR lifecycle changes, `ok` for successful
   inspection, otherwise `invalid`, `incomplete`, or `operational_failure`.
 - `exit_code`: the process exit code.
-- `affected_ids`: the created/proposed/edited record ID after complete-change planning;
+- `affected_ids`: the created/proposed/edited/approved/activated/withdrawn record ID after complete-change planning;
   empty for inspection, initialization, domain registration, and edit no-ops. Partial failures
   retain the intended ID; inspect `partial_write` to establish what was written.
 - `records`: BRR objects ordered by ID then path. Each has `type: "brr"`,
@@ -509,3 +510,37 @@ path order. JSON uses the existing `records` array with explicitly stored relate
 fields; human output also prints `source -> target` edges. Supersession edges
 are not traversed. Missing/unverified references retain the validation diagnostics
 and exit status; traversal does not invent a record for an unavailable target.
+
+## Immediate BRR activation and withdrawal
+
+```sh
+badr activate BRR-ORD-001 --confirm --actor "Human" --rationale "Apply reviewed policy" --json
+badr deprecate BRR-ORD-001 --confirm --actor "Human" --rationale "Withdraw this policy"
+badr retire BRR-ORD-001 --confirm --actor "Human" --rationale "End this policy" --json
+```
+
+`activate` accepts only an approved BRR and sets `effective_from` to the actual
+UTC operation time. Approval alone remains inactive. `deprecate` and `retire`
+accept only effective BRRs, preserve activation time, and set `effective_until`
+to the actual withdrawal time. Timestamps are quoted, include seconds and an
+explicit UTC timezone, and may include fractional seconds. There are no
+scheduling/backdating arguments. These commands reject ADRs and illegal or
+repeated transitions. All require `--confirm`, nonempty `--actor` and `--rationale`;
+agents obtain human authorization outside BADR, which records a declaration.
+
+Each event preserves the active approval reference, exact frozen body digest,
+related/replacement links, and earlier receipts. Effective and withdrawn bodies
+remain frozen; activation permanently disqualifies an approval reset. Withdrawn
+records cannot reopen. Shared whole-collection, baseline/history, safe-write,
+lock, and partial-failure rules apply. Publication order is record then evidence.
+Success returns `result: effective`, `deprecated`, or `retired`, the affected ID,
+coverage/baseline, pending audit durability, and a proposed audit commit message.
+BADR never stages or commits.
+
+Withdrawal selects no replacement and revives no predecessor. Inspection and
+successful withdrawal include an advisory diagnostic `policy_gap` for each
+deprecated/retired BRR, identifying the record and asking humans to resolve any
+policy gap explicitly. This notice does not fail validation, prove that a gap
+exists, or assess code conformance. It remains visible when filtering records;
+there is no inferred semantic coverage or gap-resolution workflow. Current-effective
+and pending-preview selections immediately exclude withdrawn BRRs.
