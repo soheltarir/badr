@@ -3,7 +3,7 @@
 BADR implements initialization and read-only BRR/ADR inspection and structural
 validation, operation-evidence replay, exact frozen-body checks, and retained
 Git revision checks, governed domain registration, record creation, BRR proposal,
-ordinary record editing, explicit approval, and immediate BRR activation/withdrawal.
+ordinary record editing, explicit approval, ADR rejection/deprecation, and immediate BRR activation/withdrawal.
 Replacement and the remaining lifecycle commands remain unavailable.
 See the [versioned evidence contract](evidence.md) for the event schema and
 coverage limits.
@@ -153,10 +153,10 @@ The same repository state produces the same JSON bytes.
 
 - `schema_version`: integer `1`; breaking contract changes require a new version.
 - `operation`: `init`, `domain_add`, `new_brr`, `new_adr`, `propose`, `edit`, `decide`,
-  `activate`, `deprecate`, `retire`, `list`,
+  `activate`, `reject`, `deprecate`, `retire`, `link`, `unlink`, `related`, `list`,
   `show`, `validate`, or `arguments`.
 - `success`: true only for exit 0.
-- `result`: `created`/`unchanged` for successful init, `created` for registration/creation, `proposed` for BRR proposal, `edited`/`unchanged` for editing, `approved` for approval, `effective`/`deprecated`/`retired` for BRR lifecycle changes, `ok` for successful
+- `result`: `created`/`unchanged` for successful init, `created` for registration/creation, `proposed` for BRR proposal, `edited`/`unchanged` for editing, `approved` for approval, `effective`/`deprecated`/`retired` for BRR lifecycle changes, `rejected`/`deprecated` for ADR withdrawal, `ok` for successful
   inspection, otherwise `invalid`, `incomplete`, or `operational_failure`.
 - `exit_code`: the process exit code.
 - `affected_ids`: the created/proposed/edited/approved/activated/withdrawn record ID after complete-change planning;
@@ -544,3 +544,44 @@ policy gap explicitly. This notice does not fail validation, prove that a gap
 exists, or assess code conformance. It remains visible when filtering records;
 there is no inferred semantic coverage or gap-resolution workflow. Current-effective
 and pending-preview selections immediately exclude withdrawn BRRs.
+
+## Reject or deprecate an ADR
+
+```sh
+badr reject 0001 --confirm --actor "Human" --rationale "Prefer another option"
+badr deprecate 0002 --confirm --actor "Human" --rationale "Direction no longer suitable" \
+  --decision-gap "Storage direction awaits a successor" \
+  --existing-code-treatment "Retain existing implementation pending an authorized migration"
+```
+
+`reject` accepts only proposed ADRs and returns `operation: reject`,
+`result: rejected`. For ADRs, `deprecate` accepts only approved records and returns
+`operation: deprecate`, `result: deprecated`. Both require explicit `--confirm`,
+nonempty `--actor` and `--rationale`. ADR deprecation also requires nonempty
+`--decision-gap` and `--existing-code-treatment`; explicitly state `None` when
+there is no decision gap. The record ID selects BRR or ADR behavior. BRR deprecation
+keeps its existing flags and rejects these ADR-only declarations. Agents obtain human authorization outside BADR;
+the command records the declaration without authenticating the actor.
+
+Rejection remains non-authoritative. Deprecation immediately withdraws direction
+for new work in this checkout: `list --directing` excludes the ADR and `show`
+reports `directs_new_work: false`. Neither command changes existing code,
+baseline files, production, or asserts existing-code conformance. Deprecated
+ADRs remain eligible for a later explicit supersession; the replacement command
+is still unavailable. Rejected/deprecated records cannot reopen through `edit`
+or `decide`, and their reasoning stays frozen. IDs and relationships are retained.
+
+Both commands update the quoted governed date to the actual UTC event date,
+append a dated lifecycle note with actor/rationale (plus gap/code treatment for
+deprecation), and append evidence automatically. Caller text is quoted in notes
+so embedded Markdown cannot create lifecycle headings. Exact decision-body bytes,
+all earlier note bytes, and receipts are preserved. A Markdown boundary that
+prevents appending a real final lifecycle section without changing the decision
+body (for example, no terminal newline or an unclosed fence) is refused before
+writing. Resolve such boundaries while proposed; approved reasoning needs a
+successor if a lifecycle note cannot be appended safely.
+
+These commands use complete-change validation, the shared lock/safe writer,
+partial-write/manual-repair reporting, and pending commit durability. Human
+output includes completed/pending paths and the proposed audit commit message;
+JSON exposes the same report fields. They never stage or commit automatically.

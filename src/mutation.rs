@@ -383,6 +383,7 @@ pub(super) fn run(
                     "edit" => "edited",
                     "propose" => "proposed",
                     "decide" => "approved",
+                    "reject" => "rejected",
                     "link" => "linked",
                     "unlink" => "unlinked",
                     "activate" => "effective",

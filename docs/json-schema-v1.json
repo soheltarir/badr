@@ -43,7 +43,8 @@
         "related",
         "activate",
         "deprecate",
-        "retire"
+        "retire",
+        "reject"
       ]
     },
     "result": {
@@ -61,7 +62,8 @@
         "ok",
         "invalid",
         "incomplete",
-        "operational_failure"
+        "operational_failure",
+        "rejected"
       ]
     },
     "exit_code": {

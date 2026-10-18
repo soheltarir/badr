@@ -54,8 +54,10 @@ enum Operation {
     Related { id: String },
     /// Immediately activate an approved BRR through explicit human authorization.
     Activate(repository::authoring::Proposal),
-    /// Immediately deprecate an effective BRR, exposing any policy gap.
-    Deprecate(repository::authoring::Proposal),
+    /// Deprecate an effective BRR or approved ADR with explicit authorization.
+    Deprecate(repository::authoring::Deprecation),
+    /// Reject a proposed ADR through explicit human authorization.
+    Reject(repository::authoring::Rejection),
     /// Immediately retire an effective BRR, exposing any policy gap.
     Retire(repository::authoring::Proposal),
     /// Inspect managed records with explicit applicability selection.
@@ -100,10 +102,9 @@ fn main() -> ExitCode {
         Operation::Activate(choice) => {
             repository::authoring::lifecycle(&cli.repo, "activate", choice)
         }
-        Operation::Deprecate(choice) => {
-            repository::authoring::lifecycle(&cli.repo, "deprecate", choice)
-        }
+        Operation::Deprecate(choice) => repository::authoring::deprecate(&cli.repo, choice),
         Operation::Retire(choice) => repository::authoring::lifecycle(&cli.repo, "retire", choice),
+        Operation::Reject(rejection) => repository::authoring::reject(&cli.repo, rejection),
         Operation::Edit(edit) => repository::editing::run(&cli.repo, edit),
         Operation::Decide(approval) => repository::authoring::decide(&cli.repo, approval),
         Operation::Propose(proposal) => repository::authoring::propose(&cli.repo, proposal),
@@ -149,6 +150,7 @@ fn emit(report: Report, json: bool) -> ExitCode {
                 | "activate"
                 | "deprecate"
                 | "retire"
+                | "reject"
         ) {
             output.push_str(&format!(
                 "Completed writes: {:?}\nNot completed: {:?}\nPending audit commit: {:?}\n",

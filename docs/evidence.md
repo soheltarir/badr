@@ -7,8 +7,8 @@ malformed hashes/times/IDs, duplicate event IDs, and duplicate affected numeric
 identities are errors. [The event schema](evidence-schema-v1.json) describes the
 wire shape; replay adds state, relationship, and history constraints.
 
-Domain registration, BRR proposal, explicit approval, and immediate BRR
-activation/deprecation/retirement create governed events;
+Domain registration, BRR proposal, explicit approval, ADR rejection/deprecation,
+and immediate BRR activation/deprecation/retirement create governed events;
 record creation creates allocation events. External-edit registration, evidence repair,
 and the remaining lifecycle commands remain unavailable.
 Missing evidence cannot be replaced by a successful syntax check. Do not invent
@@ -161,3 +161,15 @@ Available registries across local refs permanently reserve prefix ownership,
 including registries subsequently deleted from a branch. Registration refuses
 reassignment even when the current registry no longer mentions that prefix.
 The local-history guarantee cannot see unseen clones or deliberately erased refs.
+
+## ADR rejection and deprecation
+
+`reject` and ADR `deprecate` append governed events and dated lifecycle notes.
+Deprecation additionally requires nonempty `decision_gap` and
+`existing_code_treatment` declarations; state explicitly when there is no gap.
+These declarations preserve human intent without assessing its adequacy or
+changing existing code. The ADR revision retains its prior `approval_ref` on
+deprecation and the exact decision digest. Rejection freezes the resulting
+reasoning without creating an approval. Prior receipts and notes remain intact.
+Deprecated ADRs remain valid predecessors for later explicit supersession;
+withdrawal never infers a replacement.

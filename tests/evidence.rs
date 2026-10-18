@@ -685,7 +685,10 @@ fn legitimate_note_append_preserves_the_approved_decision_digest() {
     deprecated["from"] = json!("approved");
     deprecated["to"] = json!("deprecated");
     deprecated["notes_sha256"] = json!(digest(new_notes.as_bytes()));
-    all.push(event(root, "deprecate", "deprecate", vec![deprecated]));
+    let mut withdrawal = event(root, "deprecate", "deprecate", vec![deprecated]);
+    withdrawal["decision_gap"] = json!("No replacement selected");
+    withdrawal["existing_code_treatment"] = json!("Retain existing code");
+    all.push(withdrawal);
     write_adr(root, "deprecated", BODY, &new_notes, "");
     ledger(root, &all);
     report(root, 0);
