@@ -228,11 +228,15 @@ pub(super) fn event(
     authorization: Option<(&str, &str)>,
     fields: serde_json::Value,
 ) -> Result<serde_json::Value, Failure> {
-    let branch = git(root, &["symbolic-ref", "--quiet", "--short", "HEAD"])?;
+    let branch = git(root, &["symbolic-ref", "--quiet", "HEAD"])?;
     if !branch.status.success() {
         return Err("Managed writes require a named checkout".into());
     }
     let branch = String::from_utf8(branch.stdout).map_err(|e| e.to_string())?;
+    let branch = branch
+        .trim()
+        .strip_prefix("refs/heads/")
+        .ok_or("Managed writes require a local branch checkout")?;
     let now: chrono::DateTime<chrono::Utc> = std::time::SystemTime::now().into();
     let at = now.to_rfc3339_opts(chrono::SecondsFormat::Nanos, true);
     let mut event = serde_json::json!({"version":1,"event_id":format!("{operation}-{at}-{}", std::process::id()),"operation":operation,"at":at,"branch":branch.trim(),"baseline_commit":report.baseline_commit,"changes":[]});

@@ -1424,11 +1424,15 @@ pub(super) fn reset_approval(
     if state.revision.to != "approved" || state.activated || state.replaced {
         return Err("A previously activated or replaced record requires a successor".into());
     }
-    let branch = git(root, &["symbolic-ref", "--quiet", "--short", "HEAD"])?;
+    let branch = git(root, &["symbolic-ref", "--quiet", "HEAD"])?;
     if branch.status.code().is_none_or(|code| code > 1) {
         return Err(io::Error::other(String::from_utf8_lossy(&branch.stderr).into_owned()).into());
     }
     let branch = String::from_utf8(branch.stdout).map_err(|e| e.to_string())?;
+    let branch = branch
+        .trim()
+        .strip_prefix("refs/heads/")
+        .ok_or("Managed writes require a local branch checkout")?;
     let config = super::config(root)?;
     if !branch.trim().is_empty() && branch.trim() != config.baseline_branch {
         let mut commits = BTreeSet::new();

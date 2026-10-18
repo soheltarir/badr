@@ -3,8 +3,8 @@
 BADR implements initialization and read-only BRR/ADR inspection and structural
 validation, operation-evidence replay, exact frozen-body checks, and retained
 Git revision checks, governed domain registration, record creation, BRR proposal,
-ordinary record editing, explicit approval, and eligible branch-local approval reset. Activation, replacement, and the
-remaining lifecycle commands remain unavailable.
+ordinary record editing, explicit approval, and eligible branch-local approval
+reset. Activation, replacement, and the remaining lifecycle commands remain unavailable.
 See the [versioned evidence contract](evidence.md) for the event schema and
 coverage limits.
 
@@ -396,8 +396,8 @@ including unrelated records, relationships, evidence, and required history. It
 checks expected bytes/file identities and baseline stability before publishing,
 then revalidates. Existing unrelated invalidity blocks editing. Valid unrelated
 managed/unmanaged changes and staged files are preserved. Only the selected
-record is published for ordinary editing; registry and evidence bytes remain unchanged. Failed
-publication/final checks use the shared exact completed/pending path report and
+record is published for ordinary editing; registry and evidence bytes remain
+unchanged. Failed publication/final checks use the shared exact completed/pending path report and
 retained-lock manual-repair behavior. Individual file replacement is atomic;
 arbitrary external editors can still race the final expected-content check.
 

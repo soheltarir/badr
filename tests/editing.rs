@@ -1052,3 +1052,14 @@ fn external_registration_does_not_exempt_another_approved_body() {
     );
     assert_eq!(fs::read(root.join(".badr/evidence.jsonl")).unwrap(), ledger);
 }
+
+#[test]
+fn baseline_tag_name_collision_cannot_make_baseline_eligible() {
+    let dir = repo();
+    let root = dir.path();
+    git(root, &["tag", "trunk"]);
+    check(run(root, &["new", "adr", "storage-choice"]), 0);
+    decide(root, "0001");
+    let text = fs::read_to_string(root.join(ADR)).unwrap() + "\nChanged reasoning.\n";
+    reset(root, "0001", &text, 2);
+}
