@@ -7,7 +7,8 @@ ordinary content editing, explicit approval, eligible branch-local approval rese
 ADR rejection/deprecation, immediate BRR activation/withdrawal, explicit
 complete BRR replacement, coordinated ADR replacement, directed related links
 and traversal, read-only inspection, structural validation, and evidence/frozen-body
-verification. Release distribution remains planned.
+verification. [Release candidate preparation and verified archive installation](docs/releases.md)
+are documented; external release publication and Homebrew distribution remain separate.
 
 Build from source with Rust 1.85 or newer and Cargo:
 
@@ -57,5 +58,7 @@ cargo fmt --check
 cargo clippy --locked --all-targets -- -D warnings
 ```
 
-Local checks use macOS Apple Silicon. Other platforms, minimum OS versions,
-release archives, and Homebrew distribution have not been verified yet.
+The native release workflow verifies macOS ARM64/Intel and Linux ARM64/x86_64
+candidates. Consult its actual results and archive build information before
+claiming platform support; configured jobs are not evidence of passing checks.
+Homebrew installation remains tracked in issue #17.
