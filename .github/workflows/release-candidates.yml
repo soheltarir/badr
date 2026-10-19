@@ -42,3 +42,40 @@ jobs:
             dist/*-VERIFIED.txt
           if-no-files-found: error
           retention-days: 14
+
+  homebrew:
+    needs: native
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [macos-14, macos-15-intel, ubuntu-22.04, ubuntu-22.04-arm]
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: Homebrew/actions/setup-homebrew@4790763c0a3ba4036f72634dc079c4a7dfcd4878
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: badr-*
+          path: dist/archives
+          merge-multiple: true
+      - run: python3 packaging/homebrew/test_prepare.py
+      - name: Prepare unpublished tap definition
+        run: |
+          version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml)
+          mkdir -p dist/tap/Formula
+          python3 scripts/prepare-homebrew.py "$version" dist/archives > dist/tap/Formula/badr.rb
+      - name: Verify native Homebrew install and revision upgrade
+        shell: bash
+        run: |
+          version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml)
+          sh scripts/verify-homebrew.sh "$version" dist/archives 2>&1 | tee dist/homebrew-verification.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: homebrew-${{ matrix.runner }}
+          path: |
+            dist/tap/
+            dist/homebrew-verification.txt
+          if-no-files-found: error
+          retention-days: 14

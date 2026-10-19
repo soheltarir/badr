@@ -8,7 +8,8 @@ ADR rejection/deprecation, immediate BRR activation/withdrawal, explicit
 complete BRR replacement, coordinated ADR replacement, directed related links
 and traversal, read-only inspection, structural validation, and evidence/frozen-body
 verification. [Release candidate preparation and verified archive installation](docs/releases.md)
-are documented; external release publication and Homebrew distribution remain separate.
+are documented; [Homebrew tap preparation](docs/homebrew.md) is available for review.
+The tap and release URLs remain unpublished; publication needs separate release authorization.
 
 Build from source with Rust 1.85 or newer and Cargo:
 
@@ -61,4 +62,5 @@ cargo clippy --locked --all-targets -- -D warnings
 The native release workflow verifies macOS ARM64/Intel and Linux ARM64/x86_64
 candidates. Consult its actual results and archive build information before
 claiming platform support; configured jobs are not evidence of passing checks.
-Homebrew installation remains tracked in issue #17.
+The release workflow also checks native Homebrew installation and revision upgrades;
+see the [prepared tap and publication steps](docs/homebrew.md).
