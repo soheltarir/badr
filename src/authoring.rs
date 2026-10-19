@@ -301,6 +301,16 @@ pub(crate) fn propose(target: &Path, proposal: Proposal) -> Report {
     })
 }
 
+pub(super) fn review_gaps(body: &str) -> Result<(), Failure> {
+    if body
+        .split(|c: char| !c.is_ascii_alphanumeric())
+        .any(|word| matches!(word, "TODO" | "TBD" | "FIXME"))
+    {
+        return Err("Resolve explicit TODO, TBD, and FIXME review gaps before approval".into());
+    }
+    Ok(())
+}
+
 #[derive(clap::Args)]
 pub(crate) struct Approval {
     id: String,
@@ -340,13 +350,7 @@ pub(crate) fn decide(target: &Path, approval: Approval) -> Report {
         if state(record).0 != "proposed" {
             return Err("Only proposed BRRs and ADRs can be approved; an existing approval cannot be replaced".into());
         }
-        if state(record)
-            .1
-            .split(|c: char| !c.is_ascii_alphanumeric())
-            .any(|word| matches!(word, "TODO" | "TBD" | "FIXME"))
-        {
-            return Err("Resolve explicit TODO, TBD, and FIXME review gaps before approval".into());
-        }
+        review_gaps(state(record).1)?;
         if let Record::Brr(rule) = record {
             let feature = gherkin::Feature::parse(&rule.body, gherkin::GherkinEnv::default())
                 .map_err(|e| e.to_string())?;

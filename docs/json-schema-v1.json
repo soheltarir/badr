@@ -44,7 +44,8 @@
         "activate",
         "deprecate",
         "retire",
-        "reject"
+        "reject",
+        "supersede"
       ]
     },
     "result": {
@@ -63,7 +64,8 @@
         "invalid",
         "incomplete",
         "operational_failure",
-        "rejected"
+        "rejected",
+        "superseded"
       ]
     },
     "exit_code": {
