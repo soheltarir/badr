@@ -67,6 +67,7 @@ jobs:
           mkdir -p dist/tap/Formula
           python3 scripts/prepare-homebrew.py "$version" dist/archives > dist/tap/Formula/badr.rb
       - name: Verify native Homebrew install and revision upgrade
+        shell: bash
         run: |
           version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml)
           sh scripts/verify-homebrew.sh "$version" dist/archives 2>&1 | tee dist/homebrew-verification.txt
