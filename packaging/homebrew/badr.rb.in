@@ -1,0 +1,52 @@
+# Prepared release definition; publication requires separate release authorization.
+class Badr < Formula
+  desc "Manage local Business Rule and Architecture Decision Records"
+  homepage "https://github.com/soheltarir/badr"
+  version "@version@"
+  license "MIT"
+
+  on_macos do
+    on_arm do
+      depends_on macos: :sonoma
+      url "https://github.com/soheltarir/badr/releases/download/v@version@/badr-@version@-aarch64-apple-darwin.tar.gz"
+      sha256 "@darwin_arm@"
+    end
+    on_intel do
+      depends_on macos: :sequoia
+      url "https://github.com/soheltarir/badr/releases/download/v@version@/badr-@version@-x86_64-apple-darwin.tar.gz"
+      sha256 "@darwin_intel@"
+    end
+  end
+
+  on_linux do
+    on_arm do
+      url "https://github.com/soheltarir/badr/releases/download/v@version@/badr-@version@-aarch64-unknown-linux-gnu.tar.gz"
+      sha256 "@linux_arm@"
+    end
+    on_intel do
+      url "https://github.com/soheltarir/badr/releases/download/v@version@/badr-@version@-x86_64-unknown-linux-gnu.tar.gz"
+      sha256 "@linux_intel@"
+    end
+  end
+
+  def install
+    bin.install "badr"
+    pkgshare.install "docs", "BUILD-INFO.txt", "THIRD_PARTY_NOTICES.md"
+  end
+
+  def caveats
+    <<~EOS
+      Managed operations require trusted Git on PATH and a local Git worktree.
+      Linux archives require glibc 2.35 or newer; see the release runtime matrix.
+    EOS
+  end
+
+  test do
+    assert_equal "badr #{version}", shell_output("#{bin}/badr --version").strip
+    system "git", "init", "-b", "main", testpath/"repository"
+    system "git", "-C", testpath/"repository", "-c", "user.name=Test",
+           "-c", "user.email=test@example.invalid", "commit", "--allow-empty", "-m", "baseline"
+    system bin/"badr", "--repo", testpath/"repository", "init", "--baseline", "main"
+    system bin/"badr", "--repo", testpath/"repository", "validate"
+  end
+end

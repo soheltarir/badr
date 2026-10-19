@@ -2,7 +2,9 @@
 
 Issue #16 prepares reviewable standalone archives. It does not authorize tags,
 GitHub Releases, signing/notarization, a tap repository, or external publication.
-Homebrew installation is tracked separately in issue #17. V1 acceptance remains
+[Homebrew tap contents and publication steps](homebrew.md)
+are prepared separately, with installation/upgrade verification in the native CI matrix.
+The tap remains unpublished. V1 acceptance remains
 incomplete until every target has native evidence and the tap is verified.
 
 ## Build and runtime requirements
