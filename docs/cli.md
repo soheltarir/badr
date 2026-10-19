@@ -4,8 +4,8 @@ BADR implements initialization and read-only BRR/ADR inspection and structural
 validation, operation-evidence replay, exact frozen-body checks, and retained
 Git revision checks, governed domain registration, record creation, BRR proposal,
 ordinary record editing, explicit approval, eligible branch-local approval reset,
-ADR rejection/deprecation, and immediate BRR activation/withdrawal.
-Replacement and the remaining lifecycle commands remain unavailable.
+ADR rejection/deprecation, immediate BRR activation/withdrawal, explicit
+complete BRR replacement, and coordinated ADR replacement.
 See the [versioned evidence contract](evidence.md) for the event schema and
 coverage limits.
 
@@ -154,15 +154,15 @@ The same repository state produces the same JSON bytes.
 
 - `schema_version`: integer `1`; breaking contract changes require a new version.
 - `operation`: `init`, `domain_add`, `new_brr`, `new_adr`, `propose`, `edit`, `decide`,
-  `activate`, `reject`, `deprecate`, `retire`, `link`, `unlink`, `related`, `list`,
+  `activate`, `supersede`, `reject`, `deprecate`, `retire`, `link`, `unlink`, `related`, `list`,
   `show`, `validate`, or `arguments`.
 - `success`: true only for exit 0.
-- `result`: `created`/`unchanged` for successful init, `created` for registration/creation, `proposed` for BRR proposal, `edited`/`unchanged` for editing, `approved` for approval, `effective`/`deprecated`/`retired` for BRR lifecycle changes, `rejected`/`deprecated` for ADR withdrawal, `ok` for successful
+- `result`: `created`/`unchanged` for successful init, `created` for registration/creation, `proposed` for BRR proposal, `edited`/`unchanged` for editing, `approved` for approval, `effective`/`deprecated`/`retired`/`superseded` for BRR lifecycle changes, `rejected`/`deprecated` for ADR withdrawal, `ok` for successful
   inspection, otherwise `invalid`, `incomplete`, or `operational_failure`.
 - `exit_code`: the process exit code.
-- `affected_ids`: the created/proposed/edited/approved/activated/withdrawn record ID after complete-change planning;
+- `affected_ids`: the created/proposed/edited/approved/activated/withdrawn/replaced record IDs after complete-change planning;
   empty for inspection, initialization, domain registration, and edit no-ops. Partial failures
-  retain the intended ID; inspect `partial_write` to establish what was written.
+  retain the intended IDs; inspect `partial_write` to establish what was written.
 - `records`: BRR objects ordered by ID then path. Each has `type: "brr"`,
   `id`, `domain`, `status`, `owners`, relationship lists, optional description
   and applicability times, managed-relative `path`, Feature `title`,
@@ -610,7 +610,8 @@ Rejection remains non-authoritative. Deprecation immediately withdraws direction
 for new work in this checkout: `list --directing` excludes the ADR and `show`
 reports `directs_new_work: false`. Neither command changes existing code,
 baseline files, production, or asserts existing-code conformance. Deprecated
-ADRs remain eligible for later explicit supersession through `supersede`. Rejected/deprecated records cannot reopen through `edit`
+ADRs remain eligible for a later explicit supersession through `supersede`.
+Rejected/deprecated records cannot reopen through `edit`
 or `decide`, and their reasoning stays frozen. IDs and relationships are retained.
 
 Both commands update the quoted governed date to the actual UTC event date,
@@ -627,6 +628,57 @@ These commands use complete-change validation, the shared lock/safe writer,
 partial-write/manual-repair reporting, and pending commit durability. Human
 output includes completed/pending paths and the proposed audit commit message;
 JSON exposes the same report fields. They never stage or commit automatically.
+
+## Explicit complete BRR replacement
+
+Activate previously approved successors and end predecessor applicability:
+
+```sh
+badr activate --predecessor BRR-ORD-001 --successor BRR-ORD-002 \
+  --successor BRR-ORD-003 --complete --reviewed --confirm \
+  --actor "Human" --rationale "These two rules jointly replace cancellation policy"
+```
+
+For successors already effective, use `supersede` with the same flags. Repeat
+`--predecessor` for consolidation and `--successor` for splitting. Sets must be
+nonempty, duplicate-free, disjoint, and contain existing BRRs. Predecessors must
+be effective; `activate` successors must be approved, while `supersede` successors
+must already be effective. A positional ID remains supported for ordinary
+`activate <id>` and cannot be combined with replacement flags.
+
+`--complete` declares that the entire predecessor policy is replaced by the
+listed successors jointly. `--reviewed` declares human review of compatibility
+for existing data and in-flight behavior. Successors must carry the Feature
+tag `@successor` before approval; `decide --reviewed` checks both
+`@compatibility:existing-data` and `@compatibility:in-flight` scenarios with a
+`treatment:grandfather`, `treatment:migrate`, `treatment:re-evaluate`, or
+`treatment:reject` tag and a nonempty `Then` outcome. Prefix each tag with `@`
+in Gherkin. Missing treatment requires eligible edit/reset and reapproval, or
+a new successor. BADR checks structure and declarations; humans judge completeness.
+
+Both commands retain bodies, prior approval receipts, activation times, and
+historical links. They add reciprocal `supersedes`/`superseded_by` links and
+reject cycles. Predecessors become `superseded` with an immediate end time;
+coordinated activation gives every successor the same immediate start time.
+Scheduling/backdating flags are unsupported. Approval alone never withdraws
+a predecessor. Completed replacement prevents approval reset on either side.
+Later withdrawal exposes gaps without reviving any predecessor. Partial or
+intended replacement belongs in reasoning and ordinary related links. ADR groups
+use `supersede` for approved successors, or add `--approve-successors --reviewed`
+to approve proposed successors as part of the complete replacement. All target
+IDs in a group must be ADR IDs or BRR IDs; mixed groups are refused.
+
+JSON uses the existing schema version 1, including all sorted `affected_ids`,
+baseline, coverage, pending commit durability, and completed/remaining writes.
+Successful `activate` reports `result: "effective"`; successful `supersede`
+reports `result: "superseded"`. Human output includes write outcomes and a
+proposed audit commit message. Neither command commits managed records.
+
+The shared whole-collection pre/postvalidation, lock, baseline/content rechecks,
+and safe individual-file writes apply. These group operations are **not
+crash-atomic**. A failure can leave partial replacement; preserve the reported
+paths and repair manually using the lock cleanup procedure above. No automatic
+rollback or recovery is provided.
 
 
 ## Explicit ADR replacement
@@ -655,7 +707,8 @@ uses the same review declaration and unresolved TODO/TBD/FIXME checks as `decide
 Already-approved successors retain their existing approval references; proposed
 successors reference the new group receipt. Rejected, superseded, and deprecated
 successors cannot be reopened. `--reviewed` requires `--approve-successors`.
-This command currently supports ADR replacement only.
+This command supports ADR groups; BRR groups use the same command with BRR
+IDs and the compatibility rules above.
 
 The complete intended state is validated before publication, including evidence,
 identity, statuses, exact reciprocal edges, and an acyclic replacement graph.

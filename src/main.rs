@@ -46,8 +46,6 @@ enum Operation {
     Propose(repository::authoring::Proposal),
     /// Approve after human authorization outside BADR; records a declaration, not authentication.
     Decide(repository::authoring::Approval),
-    /// Completely replace ADRs with explicitly declared approved successors.
-    Supersede(repository::replacement::Replacement),
     /// Add a directed ordinary related reference with explicit authorization.
     Link(repository::relationships::Link),
     /// Remove a directed ordinary related reference with explicit authorization.
@@ -55,7 +53,9 @@ enum Operation {
     /// Traverse outgoing ordinary related references; cycles are visited once.
     Related { id: String },
     /// Immediately activate an approved BRR through explicit human authorization.
-    Activate(repository::authoring::Proposal),
+    Activate(repository::replacement::Activation),
+    /// Completely replace a same-type group with explicitly declared successors.
+    Supersede(repository::replacement::Replacement),
     /// Deprecate an effective BRR or approved ADR with explicit authorization.
     Deprecate(repository::authoring::Deprecation),
     /// Reject a proposed ADR through explicit human authorization.
@@ -98,13 +98,11 @@ fn main() -> ExitCode {
         }
     };
     let report = match cli.command {
-        Operation::Supersede(choice) => repository::replacement::run(&cli.repo, choice),
         Operation::Link(link) => repository::relationships::run(&cli.repo, link, false),
         Operation::Unlink(link) => repository::relationships::run(&cli.repo, link, true),
         Operation::Related { id } => repository::relationships::related(&cli.repo, &id),
-        Operation::Activate(choice) => {
-            repository::authoring::lifecycle(&cli.repo, "activate", choice)
-        }
+        Operation::Activate(choice) => repository::replacement::activate(&cli.repo, choice),
+        Operation::Supersede(group) => repository::replacement::run(&cli.repo, group),
         Operation::Deprecate(choice) => repository::authoring::deprecate(&cli.repo, choice),
         Operation::Retire(choice) => repository::authoring::lifecycle(&cli.repo, "retire", choice),
         Operation::Reject(rejection) => repository::authoring::reject(&cli.repo, rejection),

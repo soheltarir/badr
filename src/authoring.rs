@@ -236,13 +236,13 @@ pub(super) fn change(record: &Record, from: Option<&str>) -> serde_json::Value {
 
 #[derive(clap::Args)]
 pub(crate) struct Proposal {
-    id: String,
+    pub(super) id: String,
     #[arg(long)]
-    confirm: bool,
+    pub(super) confirm: bool,
     #[arg(long)]
-    actor: String,
+    pub(super) actor: String,
     #[arg(long)]
-    rationale: String,
+    pub(super) rationale: String,
 }
 pub(crate) fn propose(target: &Path, proposal: Proposal) -> Report {
     let Proposal {

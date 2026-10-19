@@ -42,10 +42,10 @@
         "unlink",
         "related",
         "activate",
+        "supersede",
         "deprecate",
         "retire",
-        "reject",
-        "supersede"
+        "reject"
       ]
     },
     "result": {
@@ -57,6 +57,7 @@
         "linked",
         "unlinked",
         "effective",
+        "superseded",
         "deprecated",
         "retired",
         "unchanged",
@@ -64,8 +65,7 @@
         "invalid",
         "incomplete",
         "operational_failure",
-        "rejected",
-        "superseded"
+        "rejected"
       ]
     },
     "exit_code": {
