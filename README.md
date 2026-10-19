@@ -11,6 +11,17 @@ verification. [Release candidate preparation and verified archive installation](
 are documented; [Homebrew tap preparation](docs/homebrew.md) is available for review.
 The tap and release URLs remain unpublished; publication needs separate release authorization.
 
+Install a reviewed local release candidate without Rust or elevated privileges:
+
+```sh
+sh install.sh --archive /path/to/badr-0.1.0-aarch64-apple-darwin.tar.gz
+```
+
+Keep the matching `.tar.gz.sha256` file beside the archive and choose the archive
+for your host. The installer verifies its checksum and binary version before
+installing to `~/.local/bin`; set `BADR_INSTALL_DIR` to choose another directory.
+See [installer usage and release availability](docs/releases.md#installer).
+
 Build from source with Rust 1.85 or newer and Cargo:
 
 ```sh

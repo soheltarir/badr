@@ -111,6 +111,49 @@ fails. These instructions assume a downloaded candidate, not an existing public
 release URL. Unsigned candidates may require local platform security review;
 no signing credentials or notarization have been used.
 
+## Installer
+
+The repository-root `install.sh` installs the archive matching the host's macOS
+or GNU/Linux ARM64/x86_64 target. It requires a POSIX shell, `tar`, standard Unix
+utilities, and either `sha256sum` or `shasum`. Downloads additionally require
+`curl`. Runtime requirements and platform verification limits above still apply;
+Linux builds are GNU/glibc builds, not Alpine/musl or Android binaries.
+
+Use a reviewed local candidate now, keeping its checksum file alongside it:
+
+```sh
+sh install.sh --archive /path/to/badr-0.1.0-aarch64-apple-darwin.tar.gz
+```
+
+The installer defaults to `$HOME/.local/bin`, accepts `BADR_INSTALL_DIR`, and
+prints a reminder when that directory is absent from PATH. It does not edit
+shell configuration or use `sudo`. Rerunning replaces an existing regular
+`badr` binary after checksum and `--version` verification. Directory/symlink
+destinations are refused. Downloads and checks happen before replacement, and
+the final replacement is a rename on the destination filesystem.
+
+Once separately authorized GitHub Releases exist with `vVERSION` tags and the
+archive/checksum names documented above, download the latest release with:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/soheltarir/badr/main/install.sh -o install.sh
+# Review the downloaded script before executing it.
+sh install.sh
+# Or select a specific release and installation directory:
+BADR_VERSION=0.1.0 BADR_INSTALL_DIR="$HOME/bin" sh install.sh
+```
+
+No GitHub Releases are published yet; remote installation will fail until they
+are. This change does not publish releases or authorize publication. Downloaded
+checksums detect corruption but do not independently authenticate the publisher.
+The binary version check executes the downloaded binary, so use trusted releases
+or reviewed local candidates. Platform signing/notarization remains a separate
+gate. Installer tests use disposable fixture archives and mocked downloads:
+
+```sh
+python3 scripts/test-install.py
+```
+
 ## Acceptance evidence and remaining gates
 
 `tests/runtime.rs` exercises both human and JSON mutation output through the
