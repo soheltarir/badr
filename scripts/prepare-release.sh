@@ -12,7 +12,11 @@ case "$target" in
   x86_64-apple-darwin) export MACOSX_DEPLOYMENT_TARGET=15.0 ;;
 esac
 cargo build --locked --release --target "$target"
-version=$(cargo pkgid | sed 's/.*@//')
+version=$("target/$target/release/badr" --version)
+version=${version#badr }
+case "$version" in
+  ''|*[!0-9A-Za-z.+-]*) echo 'Unexpected binary version' >&2; exit 1 ;;
+esac
 name=badr-$version-$target
 mkdir -p dist
 # Exclusive directory creation refuses reuse of stale candidate contents.
