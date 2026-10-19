@@ -55,18 +55,12 @@ tar -xzf "$name.tar.gz" -C "$name-check/extracted"
 binary="$PWD/$name-check/extracted/$name/badr"
 test "$("$binary" --version)" = "badr $version"
 cd ..
-cargo test --locked --offline --release --target "$target" --test runtime --no-run
-for test_binary in "target/$target/release/deps/"runtime-*; do
-  if test -f "$test_binary" && test -x "$test_binary"; then
-    case "$target" in
-      *apple*) sandbox-exec -p '(version 1)(allow default)(deny network*)' \
-        env BADR_TEST_BINARY="$binary" "$test_binary" --nocapture ;;
-      *linux*) sudo unshare --net -- env BADR_TEST_BINARY="$binary" "$test_binary" --nocapture ;;
-    esac
-    printf 'Extracted version, checksum rejection, and network-denied CLI smoke passed.\n' \
-      > "dist/$name-VERIFIED.txt"
-    exit 0
-  fi
-done
-echo 'Runtime test executable not found' >&2
-exit 1
+case "$target" in
+  *apple*) runner='["sandbox-exec", "-p", "(version 1)(allow default)(deny network*)"]' ;;
+  *linux*) runner='["sudo", "--preserve-env=BADR_TEST_BINARY", "unshare", "--net", "--"]' ;;
+esac
+# Cargo selects the executable from this build, even with stale artifacts present.
+BADR_TEST_BINARY="$binary" cargo test --locked --offline --release --target "$target" \
+  --config "target.$target.runner=$runner" --test runtime -- --nocapture
+printf 'Extracted version, checksum rejection, and network-denied CLI smoke passed.\n' \
+  > "dist/$name-VERIFIED.txt"
