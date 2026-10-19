@@ -1,7 +1,8 @@
-# Release candidates and installation
+# Releases and installation
 
-Issue #16 prepares reviewable standalone archives. It does not authorize tags,
-GitHub Releases, signing/notarization, a tap repository, or external publication.
+Standalone archives and checksums are published in
+[GitHub Releases](https://github.com/soheltarir/badr/releases).
+Release 0.1.0 is the first public release; signing/notarization is not provided.
 [Homebrew tap contents and publication steps](homebrew.md)
 are prepared separately, with installation/upgrade verification in the native CI matrix.
 The tap remains unpublished. V1 acceptance remains
@@ -107,8 +108,7 @@ install -m 755 badr-0.1.0-aarch64-apple-darwin/badr "$HOME/.local/bin/badr"
 ```
 
 On Linux use `sha256sum -c` and the matching Linux target. Stop if verification
-fails. These instructions assume a downloaded candidate, not an existing public
-release URL. Unsigned candidates may require local platform security review;
+fails. Download archives and matching checksum files from GitHub Releases. Unsigned candidates may require local platform security review;
 no signing credentials or notarization have been used.
 
 ## Installer
@@ -132,8 +132,8 @@ shell configuration or use `sudo`. Rerunning replaces an existing regular
 destinations are refused. Downloads and checks happen before replacement, and
 the final replacement is a rename on the destination filesystem.
 
-Once separately authorized GitHub Releases exist with `vVERSION` tags and the
-archive/checksum names documented above, download the latest release with:
+GitHub Releases use `vVERSION` tags and the archive/checksum names above.
+The installer resolves the latest stable release by default:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/soheltarir/badr/main/install.sh -o install.sh
@@ -143,9 +143,8 @@ sh install.sh
 BADR_VERSION=0.1.0 BADR_INSTALL_DIR="$HOME/bin" sh install.sh
 ```
 
-No GitHub Releases are published yet; remote installation will fail until they
-are. This change does not publish releases or authorize publication. Downloaded
-checksums detect corruption but do not independently authenticate the publisher.
+Downloaded checksums detect corruption but do not independently authenticate
+the publisher.
 The binary version check executes the downloaded binary, so use trusted releases
 or reviewed local candidates. Platform signing/notarization remains a separate
 gate. Installer tests use disposable fixture archives and mocked downloads:

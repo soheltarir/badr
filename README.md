@@ -9,7 +9,8 @@ complete BRR replacement, coordinated ADR replacement, directed related links
 and traversal, read-only inspection, structural validation, and evidence/frozen-body
 verification. [Release candidate preparation and verified archive installation](docs/releases.md)
 are documented; [Homebrew tap preparation](docs/homebrew.md) is available for review.
-The tap and release URLs remain unpublished; publication needs separate release authorization.
+Standalone binaries are published in [GitHub Releases](https://github.com/soheltarir/badr/releases).
+The Homebrew tap remains unpublished.
 
 Install the latest release without Rust or elevated privileges:
 
@@ -21,9 +22,8 @@ The installer detects your platform, downloads the matching release, verifies
 its checksum and binary version, and installs to `~/.local/bin`. Add that
 directory to PATH if prompted; set `BADR_INSTALL_DIR` to choose another directory.
 
-This command requires the installer to be merged into `main` and a GitHub
-release to be published. No releases are published yet. For local candidate
-installation and pinned versions, see [installer usage](docs/releases.md#installer).
+For local archive installation and pinned versions, see
+[installer usage](docs/releases.md#installer).
 
 Build from source with Rust 1.85 or newer and Cargo:
 
