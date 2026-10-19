@@ -8,10 +8,12 @@ identities are errors. [The event schema](evidence-schema-v1.json) describes the
 wire shape; replay adds state, relationship, and history constraints.
 
 Domain registration, BRR proposal, explicit approval, eligible approval reset,
-ADR rejection/deprecation, explicit BRR replacement, and immediate BRR activation/deprecation/retirement
-create governed events; record creation creates allocation events. Explicit
+ADR rejection/deprecation/replacement, BRR replacement, and immediate BRR
+activation/deprecation/retirement create governed events; record creation creates
+allocation events. Explicit
 `edit --register-external` registers an eligible body change using the same reset
-event. Evidence repair and the remaining lifecycle commands remain unavailable.
+event. Evidence repair remains unavailable.
+
 Missing evidence cannot be replaced by a successful syntax check. Do not invent
 receipts to bless an existing status or changed body.
 
@@ -175,18 +177,29 @@ reasoning without creating an approval. Prior receipts and notes remain intact.
 Deprecated ADRs remain valid predecessors for later explicit supersession;
 withdrawal never infers a replacement.
 
-## BRR replacement commands
+## Complete replacement and references
 
-`activate` with an explicit group records approved successors becoming effective
-and effective predecessors becoming superseded in one event. `supersede` uses
-already effective successors. Each event records the complete sorted
-`replacement.predecessors` and `replacement.successors`, `complete: true`, and
-`compatibility_confirmed: true` from the caller's declarations. Every affected
-revision retains its existing `approval_ref` and exact body digest. Reciprocal
-links are added without deleting previous replacement history. Activation/end
-timestamps use the single actual event time; earlier activation times survive.
+A group event has a `replacement` object with nonempty, distinct
+`predecessors` and `successors`, `complete: true`, and, for BRRs,
+`compatibility_confirmed: true`. It affects exactly their union, all of one
+record type. The declaration records human compatibility review; validation
+does not judge its semantic completeness.
 
-The intended collection and event are validated before publication. Each file
-is replaced safely, but the group is not crash-atomic: interruption can leave
-partial replacement or mismatched evidence. Completed/remaining paths and a
-retained repair lock identify known failures. There is no automatic rollback.
+ADR `decide` can approve proposed successors and supersede approved/deprecated
+predecessors together. In that group, already-approved successors may remain
+approved and must retain their prior approval references and frozen digests;
+only proposed successors reference the group event as their new approval.
+The `supersede --approve-successors --reviewed` CLI produces this group event.
+BRR `activate` can activate previously approved successors and supersede
+effective predecessors together. `supersede` requires
+already approved ADR/effective BRR successors. All links must be reciprocal,
+retain earlier replacement links, and form an acyclic graph. Splitting and
+consolidation use the same explicit sets. Later successor withdrawal preserves
+links and never revives a predecessor. Group changes cannot alter unrelated
+links or frozen reasoning.
+
+Ordinary related links stay directed and may form cycles; they never imply
+supersession. Targets missing inside an available managed collection are
+errors. References into an absent supporting collection are `unverified_reference`
+(exit 3), including retained snapshots whose supporting collection was absent.
+Validation does not silently import unrelated repository files.

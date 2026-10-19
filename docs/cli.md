@@ -4,8 +4,8 @@ BADR implements initialization and read-only BRR/ADR inspection and structural
 validation, operation-evidence replay, exact frozen-body checks, and retained
 Git revision checks, governed domain registration, record creation, BRR proposal,
 ordinary record editing, explicit approval, eligible branch-local approval reset,
-ADR rejection/deprecation, immediate BRR activation/withdrawal, and explicit
-complete BRR replacement. ADR replacement remains unavailable.
+ADR rejection/deprecation, immediate BRR activation/withdrawal, explicit
+complete BRR replacement, and coordinated ADR replacement.
 See the [versioned evidence contract](evidence.md) for the event schema and
 coverage limits.
 
@@ -610,8 +610,8 @@ Rejection remains non-authoritative. Deprecation immediately withdraws direction
 for new work in this checkout: `list --directing` excludes the ADR and `show`
 reports `directs_new_work: false`. Neither command changes existing code,
 baseline files, production, or asserts existing-code conformance. Deprecated
-ADRs remain eligible for a later explicit supersession; ADR replacement
-is still unavailable. Rejected/deprecated records cannot reopen through `edit`
+ADRs remain eligible for a later explicit supersession through `supersede`.
+Rejected/deprecated records cannot reopen through `edit`
 or `decide`, and their reasoning stays frozen. IDs and relationships are retained.
 
 Both commands update the quoted governed date to the actual UTC event date,
@@ -644,8 +644,7 @@ For successors already effective, use `supersede` with the same flags. Repeat
 nonempty, duplicate-free, disjoint, and contain existing BRRs. Predecessors must
 be effective; `activate` successors must be approved, while `supersede` successors
 must already be effective. A positional ID remains supported for ordinary
-`activate <id>` and cannot be combined with replacement flags. ADR replacement
-is not implemented by these commands.
+`activate <id>` and cannot be combined with replacement flags.
 
 `--complete` declares that the entire predecessor policy is replaced by the
 listed successors jointly. `--reviewed` declares human review of compatibility
@@ -664,7 +663,10 @@ coordinated activation gives every successor the same immediate start time.
 Scheduling/backdating flags are unsupported. Approval alone never withdraws
 a predecessor. Completed replacement prevents approval reset on either side.
 Later withdrawal exposes gaps without reviving any predecessor. Partial or
-intended replacement belongs in reasoning and ordinary related links.
+intended replacement belongs in reasoning and ordinary related links. ADR groups
+use `supersede` for approved successors, or add `--approve-successors --reviewed`
+to approve proposed successors as part of the complete replacement. All target
+IDs in a group must be ADR IDs or BRR IDs; mixed groups are refused.
 
 JSON uses the existing schema version 1, including all sorted `affected_ids`,
 baseline, coverage, pending commit durability, and completed/remaining writes.
@@ -677,3 +679,55 @@ and safe individual-file writes apply. These group operations are **not
 crash-atomic**. A failure can leave partial replacement; preserve the reported
 paths and repair manually using the lock cleanup procedure above. No automatic
 rollback or recovery is provided.
+
+
+## Explicit ADR replacement
+
+```sh
+badr supersede --predecessor 0001 --successor 0002 --complete \
+  --confirm --actor "Human" --rationale "0002 completely replaces 0001"
+
+# Approve proposed successors and complete replacement as one authorized group.
+badr supersede --predecessor 0001 --successor 0002 --successor 0003 --complete \
+  --approve-successors --reviewed --confirm --actor "Human" \
+  --rationale "Together 0002 and 0003 completely replace 0001"
+```
+
+Repeat `--predecessor` for consolidation and `--successor` for splitting. Both
+lists are required and must contain distinct, disjoint, actual ADR IDs. Every
+listed successor completely replaces every listed predecessor as a group.
+`--complete` declares the entire intended replacement set; partial or intended
+replacement belongs in reasoning or ordinary related links. BADR records this
+human declaration and checks structure; it cannot assess semantic completeness.
+Neither ordinary approval nor related links infer replacement.
+
+Predecessors must be approved or deprecated. Successors must be approved, or
+proposed when `--approve-successors --reviewed` is supplied. Coordinated approval
+uses the same review declaration and unresolved TODO/TBD/FIXME checks as `decide`.
+Already-approved successors retain their existing approval references; proposed
+successors reference the new group receipt. Rejected, superseded, and deprecated
+successors cannot be reopened. `--reviewed` requires `--approve-successors`.
+This command supports ADR groups; BRR groups use the same command with BRR
+IDs and the compatibility rules above.
+
+The complete intended state is validated before publication, including evidence,
+identity, statuses, exact reciprocal edges, and an acyclic replacement graph.
+Each record retains previous links, exact decision-body bytes, prior notes, and
+receipts. Every affected ADR receives the actual UTC date and a dated lifecycle
+note naming both complete sets and actor/rationale. Completed participation on
+either side permanently blocks approval reset. Later successor deprecation
+retains history and never revives predecessors or changes existing code.
+
+JSON returns `operation: supersede`, `result: superseded`, and all `affected_ids`
+in stable ID order. The evidence operation is `supersede` for already-approved
+successors or `decide` for coordinated approval, with `replacement` containing
+`predecessors`, `successors`, and `complete: true`. Evidence includes every
+changed revision, actor, rationale, confirmation, actual UTC time, checkout
+branch, baseline commit, and applicable approval references. Human output
+includes the shared completed/remaining write paths and proposed audit commit.
+
+Publication uses the shared safe writer and postvalidation, one file at a time,
+with evidence appended last. Failure reports exact completed/remaining paths;
+once publication starts the repair lock blocks mutations until manual repair.
+The group is not crash-atomic and has no automatic rollback or recovery.
+The command never stages or commits; pending audit durability remains explicit.

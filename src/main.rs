@@ -54,7 +54,7 @@ enum Operation {
     Related { id: String },
     /// Immediately activate an approved BRR through explicit human authorization.
     Activate(repository::replacement::Activation),
-    /// Explicitly replace effective BRRs with already effective successors.
+    /// Completely replace a same-type group with explicitly declared successors.
     Supersede(repository::replacement::Replacement),
     /// Deprecate an effective BRR or approved ADR with explicit authorization.
     Deprecate(repository::authoring::Deprecation),
@@ -102,7 +102,7 @@ fn main() -> ExitCode {
         Operation::Unlink(link) => repository::relationships::run(&cli.repo, link, true),
         Operation::Related { id } => repository::relationships::related(&cli.repo, &id),
         Operation::Activate(choice) => repository::replacement::activate(&cli.repo, choice),
-        Operation::Supersede(group) => repository::replacement::run(&cli.repo, "supersede", group),
+        Operation::Supersede(group) => repository::replacement::run(&cli.repo, group),
         Operation::Deprecate(choice) => repository::authoring::deprecate(&cli.repo, choice),
         Operation::Retire(choice) => repository::authoring::lifecycle(&cli.repo, "retire", choice),
         Operation::Reject(rejection) => repository::authoring::reject(&cli.repo, rejection),
@@ -146,10 +146,10 @@ fn emit(report: Report, json: bool) -> ExitCode {
                 | "propose"
                 | "edit"
                 | "decide"
+                | "supersede"
                 | "link"
                 | "unlink"
                 | "activate"
-                | "supersede"
                 | "deprecate"
                 | "retire"
                 | "reject"

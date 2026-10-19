@@ -347,7 +347,11 @@ fn replay(events: &[Event], available: [bool; 2], report: &mut Report) -> BTreeM
                                 && change.to == "proposed"
                         }
                         "decide" => {
-                            change.from.as_deref() == Some("proposed") && change.to == "approved"
+                            change.to == "approved"
+                                && (change.from.as_deref() == Some("proposed")
+                                    || !brr
+                                        && event.replacement.is_some()
+                                        && change.from.as_deref() == Some("approved"))
                         }
                         "edit" => {
                             change.from.as_deref() == Some("approved")
@@ -454,7 +458,10 @@ fn replay(events: &[Event], available: [bool; 2], report: &mut Report) -> BTreeM
                 {
                     return Err("Activation/withdrawal must record the actual event time".into());
                 }
-                let approval = if event.operation == "decide" && !predecessor {
+                let approval = if event.operation == "decide"
+                    && !predecessor
+                    && change.from.as_deref() == Some("proposed")
+                {
                     if change.approval_ref.as_deref() != Some(&event.event_id) {
                         return Err("Approval must reference its own receipt".into());
                     }

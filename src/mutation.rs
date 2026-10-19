@@ -447,13 +447,13 @@ fn run_inner(
                     "edit" => "edited",
                     "propose" => "proposed",
                     "decide" => "approved",
+                    "supersede" => "superseded",
                     "reject" => "rejected",
                     "link" => "linked",
                     "unlink" => "unlinked",
                     "activate" => "effective",
                     "deprecate" => "deprecated",
                     "retire" => "retired",
-                    "supersede" => "superseded",
                     _ => "created",
                 }
             }
