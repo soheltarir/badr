@@ -21,14 +21,29 @@ the needed subcommand help. Use its absolute executable path consistently if it
 is outside PATH. An older or broken installation needs a separate user decision;
 do not automatically replace or upgrade it.
 
-If BADR is absent, read [release installation](references/install.md) and follow
-that branch. Finish with a working binary or a precise prerequisite/platform
-blocker. Package-manager installation and source builds are outside this workflow.
+If BADR is absent, read [release installation](references/install.md), explain
+the installer command and destination, and obtain authorization for its network
+download and user-local installation. Run that installer when authorized, then
+verify the installed absolute executable with `--version`, `--help`, and the
+needed subcommand help. If this host cannot execute the installer, give the user
+the exact command and wait for them to run it. Finish this branch only with a
+working binary or a precise prerequisite/platform blocker. Package-manager
+installation and source builds are outside this workflow.
 
 ## 2. Confirm the baseline and initialize
 
-Read existing `.badr/config.yaml` if present. Discover local branches, for example
-with `git -C <repo> for-each-ref --format='%(refname:short)' refs/heads/`, and verify
+Before reading configuration, test `<repo>/.badr/config.yaml` explicitly. If it
+is absent, continue as uninitialized. If it exists as a readable regular file,
+read it; if it exists in any other form or is unreadable, stop and report it.
+
+Before any repository-targeted BADR command, test for repository-root
+`.badr.lock`. If present, do not initialize or validate. Preserve and report its
+contents, establish whether an active writer owns it using the stale-lock
+procedure in the CLI documentation, and require repair or explicit safe cleanup
+before resuming. Never remove a lock merely to make initialization proceed.
+
+Discover local branches, for example with
+`git -C <repo> for-each-ref --format='%(refname:short)' refs/heads/`, and verify
 that a suggested baseline resolves to a commit. Prefer an existing configured
 baseline; otherwise recommend an existing `main`, `master`, or `trunk`, guided by
 the repository. Ask the user to confirm the target repository and baseline before
@@ -50,13 +65,13 @@ init and explain that init may write configuration but return incomplete coverag
 Establishing branches/commits or fetching history needs a separate request.
 
 Check process exit, `success`, `validation_coverage`, diagnostics, and
-`partial_write.completed` / `not_completed`. Exit 0 means required checks passed;
-2 means invalid arguments/state/integrity, 3 incomplete coverage, and 4 operational
-failure. Init can write configuration and still return 3. Report that state
-accurately; it does not permit governed record writes. After partial writes or a
-retained `.badr.lock`, stop for repair, preserving the report and existing files.
-Never delete a lock or rerun mutations blindly. Validation proves neither human
-approval nor business completeness.
+`partial_write.completed`. Exit 0 means required checks passed; 2 means invalid
+arguments/state/integrity, 3 incomplete coverage, and 4 operational failure.
+Init can write configuration and still return 3. Report that state accurately;
+it does not permit governed record writes. Any completed write followed by
+failure, or any retained `.badr.lock`, requires repair: preserve the report and
+existing files and stop. Never delete a lock or rerun mutations blindly.
+Validation proves neither human approval nor business completeness.
 
 ## 3. Select requirement sources
 
@@ -82,22 +97,26 @@ history internally for integrity; this does not broaden the interview source set
 
 ## 4. Remember and hand off
 
-Store the confirmed preference through the host's supported persistent-memory
-facility, scoped to this checkout's canonical absolute Git root. Record:
+Use the host memory API's structured get/put operations with namespace
+`badr.source-preferences.v1` and the canonical absolute Git root as the key.
+Store one value with this schema:
 
 ```text
-repository: <canonical absolute Git root>
+repository: <same canonical absolute Git root>
 source_mode: badr-only | badr-plus-docs
 document_paths: <explicit repository-relative files; empty for badr-only>
 confirmed_at: <date>
 ```
 
-The user's source-selection confirmation authorizes remembering this preference.
-Respect host memory permissions; if storage is absent, forbidden, or fails, keep
-the same preference in this conversation and explain that another session must
-ask again. Do not create a memory substitute in the repository, modify BADR
-configuration, or copy preferences to another clone/worktree automatically.
-Record preferences only, not document contents or interview answers.
+This namespace, key, and schema are the shared preference contract used by
+`badr-init` and `badr-refine-requirements`; do not use free-form host recall or a
+second storage location. The user's source-selection confirmation authorizes the
+put. If the host exposes no structured persistent-memory get/put API, permission
+is denied, or the put fails, retain the same value only in this conversation and
+state that a later session must ask again. Do not create a memory substitute in
+the repository, modify BADR configuration, or copy preferences to another
+clone/worktree automatically. Record preferences only, not document contents or
+interview answers.
 
 Report the executable/version, repository, baseline, initialization/validation
 outcome, selected paths, and whether preferences are persistent or session-only.
