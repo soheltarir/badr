@@ -439,27 +439,25 @@ explicit technical debt and revisit before claiming crash-atomic group changes.
 
 ## 10. Distribution and runtime
 
-Ship versioned downloadable archives and source-build instructions for:
+Ship versioned downloadable archives and checksums for:
 
 | Operating system | Binary architectures |
 |---|---|
 | macOS | Apple Silicon / ARM64; Intel / x86_64 |
 | Linux | ARM64; x86_64 |
 
-Publish checksums and maintain BADR's own Homebrew tap selecting the appropriate
-release archive. Homebrew/core acceptance and a separate bottle-build pipeline
-are not release prerequisites. Homebrew installation is subject to upstream
-host support; it does not establish BADR's own minimum macOS/Linux runtime
-baseline or promise continued Intel macOS Homebrew availability.
+Publish a repository-root, checksum-verifying `install.sh` as the sole supported
+end-user installation path. It must detect the supported host target, download
+the matching GitHub Release archive/checksum, verify both checksum and binary
+version, and install without elevated privileges. Keep source-build instructions
+for contributors and local verification.
 
 BADR's runtime is the installed binary plus trusted Git for managed operations;
 an editor is optional. Python, Go, kata skills, credentials, and network access
 are not required for ordinary local management. Source builds require a
 documented Rust toolchain. Pin/document actual parser dependencies, minimum
-Rust/OS/Linux runtime requirements, archive layout, and installation commands
-during implementation. Verify these on release targets before claiming support.
-Homebrew repository ownership, signing credentials, and publication are release
-operations, not authorized or performed by this specification delivery.
+Rust/OS/Linux runtime requirements, archive layout, and installer behavior.
+Verify these on release targets before claiming support.
 
 ## 11. Acceptance and implementation verification
 
@@ -489,8 +487,8 @@ V1 is complete only after meaningful checks demonstrate:
    blocks further mutation until manual repair; no automatic recovery claim.
 10. JSON/exit contracts, caller-supplied content, explicit optional editor use,
     and execution without prompts work for agents.
-11. Native build/smoke verification on every claimed binary target, source-build
-    instructions, archive/checksum verification, and own-tap installation work.
+11. Native build/smoke verification on every claimed binary target,
+    archive/checksum verification, and curl-driven `install.sh` installation work.
 
 Use the same internal Rust logic for CLI operations and validation. Do not
 create a public library compatibility layer, daemon, plugin system, or custom
@@ -529,7 +527,3 @@ Where they conflict, this confirmed BADR specification controls BADR.
   and [edit implementation](https://github.com/adr/ad-guidance-tool/blob/3f35fd65a11c888fdc4da76a8de509b8be3373c9/internal/application/interactor/decision/edit.go)
   informed the command interface. BADR's digest enforcement and branch reset
   rules are its own contract, not a claim about ADG immutability.
-- Official Homebrew [tap guide](https://docs.brew.sh/How-to-Create-and-Maintain-a-Tap),
-  [formula cookbook](https://docs.brew.sh/Formula-Cookbook), and
-  [support tiers](https://docs.brew.sh/Support-Tiers) inform distribution.
-  Recheck platform policy when implementing releases.
