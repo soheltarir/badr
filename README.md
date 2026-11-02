@@ -7,10 +7,9 @@ ordinary content editing, explicit approval, eligible branch-local approval rese
 ADR rejection/deprecation, immediate BRR activation/withdrawal, explicit
 complete BRR replacement, coordinated ADR replacement, directed related links
 and traversal, read-only inspection, structural validation, and evidence/frozen-body
-verification. [Release candidate preparation and verified archive installation](docs/releases.md)
-are documented; [Homebrew tap preparation](docs/homebrew.md) is available for review.
-Standalone binaries are published in [GitHub Releases](https://github.com/soheltarir/badr/releases).
-The Homebrew tap remains unpublished.
+verification and the checksum-verifying [release installer](docs/releases.md)
+are documented. Standalone binaries are published in
+[GitHub Releases](https://github.com/soheltarir/badr/releases).
 
 Install the latest release without Rust or elevated privileges:
 
@@ -22,7 +21,7 @@ The installer detects your platform, downloads the matching release, verifies
 its checksum and binary version, and installs to `~/.local/bin`. Add that
 directory to PATH if prompted; set `BADR_INSTALL_DIR` to choose another directory.
 
-For local archive installation and pinned versions, see
+For pinned versions and installer options, see
 [installer usage](docs/releases.md#installer).
 
 Build from source with Rust 1.85 or newer and Cargo:
@@ -74,7 +73,6 @@ cargo clippy --locked --all-targets -- -D warnings
 ```
 
 The native release workflow verifies macOS ARM64/Intel and Linux ARM64/x86_64
-candidates. Consult its actual results and archive build information before
-claiming platform support; configured jobs are not evidence of passing checks.
-The release workflow also checks native Homebrew installation and revision upgrades;
-see the [prepared tap and publication steps](docs/homebrew.md).
+candidates plus installation through `install.sh`. Consult actual results and
+archive build information before claiming platform support; configured jobs are
+not evidence of passing checks.

@@ -1,12 +1,9 @@
 # Releases and installation
 
 Standalone archives and checksums are published in
-[GitHub Releases](https://github.com/soheltarir/badr/releases).
+[GitHub Releases](https://github.com/soheltarir/badr/releases). The supported
+release installation path is the repository's checksum-verifying `install.sh`.
 Release 0.1.0 is the first public release; signing/notarization is not provided.
-[Homebrew tap contents and publication steps](homebrew.md)
-are prepared separately, with installation/upgrade verification in the native CI matrix.
-The tap remains unpublished. V1 acceptance remains
-incomplete until every target has native evidence and the tap is verified.
 
 ## Build and runtime requirements
 
@@ -96,58 +93,41 @@ it write the `VERIFIED` marker and allow artifact upload. Candidate checksums
 detect corruption; without a separately trusted checksum/signature they do not
 authenticate the publisher.
 
-After obtaining a reviewed candidate and its trusted checksum file, install
-without elevated privileges (example for ARM64 macOS):
-
-```sh
-shasum -a 256 -c badr-0.1.0-aarch64-apple-darwin.tar.gz.sha256
-tar -xzf badr-0.1.0-aarch64-apple-darwin.tar.gz
-./badr-0.1.0-aarch64-apple-darwin/badr --version
-mkdir -p "$HOME/.local/bin"
-install -m 755 badr-0.1.0-aarch64-apple-darwin/badr "$HOME/.local/bin/badr"
-```
-
-On Linux use `sha256sum -c` and the matching Linux target. Stop if verification
-fails. Download archives and matching checksum files from GitHub Releases. Unsigned candidates may require local platform security review;
-no signing credentials or notarization have been used.
+Native candidate verification installs through `install.sh --archive` using the
+reviewed archive and adjacent checksum. This local mode is release/CI tooling;
+end users install published releases through the curl command below.
 
 ## Installer
 
-The repository-root `install.sh` installs the archive matching the host's macOS
-or GNU/Linux ARM64/x86_64 target. It requires a POSIX shell, `tar`, standard Unix
-utilities, and either `sha256sum` or `shasum`. Downloads additionally require
-`curl`. Runtime requirements and platform verification limits above still apply;
-Linux builds are GNU/glibc builds, not Alpine/musl or Android binaries.
-
-Use a reviewed local candidate now, keeping its checksum file alongside it:
+Install the latest stable release:
 
 ```sh
-sh install.sh --archive /path/to/badr-0.1.0-aarch64-apple-darwin.tar.gz
+curl -fsSL https://raw.githubusercontent.com/soheltarir/badr/main/install.sh | sh
 ```
 
-The installer defaults to `$HOME/.local/bin`, accepts `BADR_INSTALL_DIR`, and
-prints a reminder when that directory is absent from PATH. It does not edit
-shell configuration or use `sudo`. Rerunning replaces an existing regular
-`badr` binary after checksum and `--version` verification. Directory/symlink
-destinations are refused. Downloads and checks happen before replacement, and
-the final replacement is a rename on the destination filesystem.
+The repository-root `install.sh` detects the host's macOS or GNU/Linux
+ARM64/x86_64 target, downloads its GitHub Release archive and checksum, verifies
+SHA-256 and the binary's reported version, then installs to `$HOME/.local/bin`.
+It requires a POSIX shell, `curl`, `tar`, standard Unix utilities, and either
+`sha256sum` or `shasum`. Linux builds target GNU/glibc, not Alpine/musl or
+Android.
 
-GitHub Releases use `vVERSION` tags and the archive/checksum names above.
-The installer resolves the latest stable release by default:
+Select a published version or writable destination without modifying the script:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/soheltarir/badr/main/install.sh -o install.sh
-# Review the downloaded script before executing it.
-sh install.sh
-# Or select a specific release and installation directory:
-BADR_VERSION=0.1.0 BADR_INSTALL_DIR="$HOME/bin" sh install.sh
+curl -fsSL https://raw.githubusercontent.com/soheltarir/badr/main/install.sh |
+  BADR_VERSION=0.1.0 BADR_INSTALL_DIR="$HOME/bin" sh
 ```
 
-Downloaded checksums detect corruption but do not independently authenticate
-the publisher.
-The binary version check executes the downloaded binary, so use trusted releases
-or reviewed local candidates. Platform signing/notarization remains a separate
-gate. Installer tests use disposable fixture archives and mocked downloads:
+The installer never uses `sudo` or edits shell configuration. It prints a PATH
+reminder when needed. Rerunning replaces an existing regular `badr` only after
+download, checksum, and version verification; directory/symlink destinations are
+refused. Final replacement is a rename on the destination filesystem.
+
+Downloaded checksums detect corruption but do not independently authenticate the
+publisher. The binary version check executes the downloaded binary, so use only
+trusted releases. Platform signing/notarization remains a separate gate.
+Installer tests use disposable fixture archives and mocked downloads:
 
 ```sh
 python3 scripts/test-install.py
