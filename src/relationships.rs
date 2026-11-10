@@ -43,7 +43,8 @@ pub(crate) fn run(target: &Path, link: Link, remove: bool) -> Report {
         return Report::invalid(
             operation,
             "invalid_relationship_arguments",
-            "Require --confirm, nonempty --actor and --rationale".into(),
+            "Require --confirm, a nonempty --rationale (--actor defaults to the git user.name)"
+                .into(),
         );
     }
     mutation::run(target, operation, |root, report, expected| {

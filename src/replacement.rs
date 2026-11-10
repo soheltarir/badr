@@ -83,7 +83,7 @@ fn run_brr(target: &Path, operation: &str, group: Replacement) -> Report {
         || successors.len() != group.successor.len()
         || !predecessors.is_disjoint(&successors)
     {
-        return Report::invalid(operation, "invalid_replacement_arguments", "Require disjoint nonempty --predecessor and --successor sets, --complete, --reviewed, --confirm, nonempty --actor and --rationale".into());
+        return Report::invalid(operation, "invalid_replacement_arguments", "Require disjoint nonempty --predecessor and --successor sets, --complete, --reviewed, --confirm, a nonempty --rationale (--actor defaults to the git user.name)".into());
     }
     mutation::run(target, operation, |root, report, expected| {
         let mut event = event(
@@ -206,7 +206,7 @@ fn run_adr(target: &Path, choice: Replacement) -> Report {
         || choice.reviewed && !choice.approve_successors
     {
         return Report::invalid("supersede", "invalid_replacement_arguments",
-            "Require --complete, --confirm, nonempty --actor and --rationale; --approve-successors requires --reviewed".into());
+            "Require --complete, --confirm, a nonempty --rationale (--actor defaults to the git user.name); --approve-successors requires --reviewed".into());
     }
     let predecessors: BTreeSet<_> = choice.predecessor.iter().collect();
     let successors: BTreeSet<_> = choice.successor.iter().collect();

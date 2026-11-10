@@ -158,7 +158,7 @@ pub(crate) fn run(target: &Path, edit: Edit) -> Report {
                 let rationale = edit.rationale.as_deref().filter(|s| !s.trim().is_empty());
                 if !edit.confirm || actor.is_none() || rationale.is_none() {
                     return Err(
-                        "Approval reset requires --confirm, nonempty --actor and --rationale"
+                        "Approval reset requires --confirm, a nonempty --rationale (--actor defaults to the git user.name)"
                             .into(),
                     );
                 }
