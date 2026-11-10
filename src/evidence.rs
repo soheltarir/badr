@@ -445,9 +445,15 @@ fn replay(events: &[Event], available: [bool; 2], report: &mut Report) -> BTreeM
                     }
                 } else if !change.supersedes.is_empty()
                     || !change.superseded_by.is_empty()
-                    || !change.related.is_empty()
+                    || !(change.related.is_empty()
+                        || (event.operation == "allocate"
+                            && !change.id.starts_with("BRR-")
+                            && change.related.iter().all(|id| id.starts_with("BRR-"))))
                 {
-                    return Err("Allocation cannot imply links or replacement".into());
+                    return Err(
+                        "Allocation can record only an ADR's driving BRRs, not other links or replacement"
+                            .into(),
+                    );
                 }
                 if event.operation == "activate"
                     && !predecessor

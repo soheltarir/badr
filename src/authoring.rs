@@ -168,6 +168,26 @@ pub(crate) fn new(target: &Path, command: Command) -> Report {
                 return Err("Supplied BRR domain must match the selected domain".into());
             }
         }
+        if let Record::Adr(r) = &record {
+            let m = &r.metadata;
+            if !m.supersedes.is_empty() || !m.superseded_by.is_empty() || !m.related_adrs.is_empty()
+            {
+                return Err(
+                    "Creation cannot establish replacement or ADR-to-ADR links; use link or supersede afterwards"
+                        .into(),
+                );
+            }
+            for brr_id in &m.related_business_rules {
+                let effective = report.records.iter().any(|existing| {
+                    matches!(existing, Record::Brr(b) if b.metadata.id == *brr_id && b.currently_effective)
+                });
+                if !effective {
+                    return Err(
+                        format!("Driving BRR {brr_id} must be an existing effective BRR").into(),
+                    );
+                }
+            }
+        }
         event["changes"] = serde_json::json!([change(&record, None)]);
         // Publish the allocation receipt first so even an interrupted creation reserves the ID.
         writes.insert(0, (LEDGER.into(), append(expected, &event)?));
