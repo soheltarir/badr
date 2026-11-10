@@ -1,7 +1,7 @@
 # Decision selection and ADR conflicts
 
 Used after the handoff in `badr-design-arch`. Nothing here writes a file; the
-output is a set of **user-accepted decisions** for a later, separate saving step.
+output is the set of **user-accepted decisions**; recording ADRs requires a separate request.
 
 ## Candidates
 
@@ -23,13 +23,12 @@ Before the user chooses, show for each selected decision:
 - the related ADRs and any overlap (below).
 
 The user then chooses an alternative, which need not be the recommendation.
-One decision at a time unless the user asks otherwise.
 
 ## Related ADRs and overlap
 
 Before judging any conflict, read every related ADR **in full** with
 `badr --repo <repo> show <id> --json`, from the allowed sources only
-(`.badr/adrs/`; plus confirmed documents under `badr-plus-docs`). Find them with
+(see [Preflight and sources](preflight.md)). Find them with
 `badr --repo <repo> list --type adr --json` and `list --directing --json`.
 Titles or summaries are not enough. Overlap means the same question is settled,
 or the chosen option contradicts or narrows an existing outcome.
@@ -40,6 +39,6 @@ or the chosen option contradicts or narrows an existing outcome.
 | **proposed** | Report ID, title, path, and the overlap; do not block. Continue. |
 | rejected, deprecated, superseded | Mention as history only if relevant. |
 
-Approved ADRs outrank free-form requirements and extra documents. Proposing a
+Proposing a
 successor or link records intent only; do not approve, supersede, or deprecate
 anything here.
