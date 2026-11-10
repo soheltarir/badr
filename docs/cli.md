@@ -323,8 +323,12 @@ The ADR template is BADR's adaptation of MADR 4.0.0 under CC0-1.0; see
 caller's current directory (absolute paths are also accepted). Valid supplied
 bytes are preserved exactly. Content must use the next allocated ID, the selected
 BRR domain, the legal initial status, and valid metadata/body structure. ADR
-`date` must equal today's UTC operation date. Allocation cannot establish related
-or replacement links; leave these lists empty. Invalid content is refused before
+`date` must equal today's UTC operation date. Supplied ADR content may list
+existing effective BRR IDs in `related_business_rules` as its drivers; they are
+recorded at creation. A listed BRR that is missing or not effective is refused.
+Replacement links and ADR-to-ADR links are not accepted at creation (leave
+`supersedes`, `superseded_by`, and `related_adrs` empty); use `link` or
+`supersede` afterwards. Invalid content is refused before
 publication, without reserving an ID. Creation never prompts or launches an editor.
 
 Allocation considers current records, retained evidence, and records/evidence

@@ -2810,3 +2810,60 @@ fn replacement_approves_split_successors_and_retains_earlier_replacement_edges()
     commit(root, "Retain chained replacement history");
     check(run(root, &["validate"]), 0);
 }
+
+#[test]
+fn adr_creation_records_effective_driving_brrs_and_refuses_other_links() {
+    let dir = repo();
+    let root = dir.path();
+    approved_rule(root);
+    check(lifecycle(root, "activate", "BRR-ORD-001"), 0);
+    check(
+        run(
+            root,
+            &[
+                "new", "brr", "draft", "--domain", "ordering", "--owner", "Product",
+            ],
+        ),
+        0,
+    );
+    check(run(root, &["new", "adr", "template"]), 0);
+    let template = fs::read_to_string(root.join(".badr/adrs/0001-template.md")).unwrap();
+    let input = root.join("input.md");
+    let with = |id: &str, field: &str, value: &str| {
+        template.replace("0001", id).replace(
+            "status: proposed\n",
+            &format!("status: proposed\n{field}: [{value}]\n"),
+        )
+    };
+    let create = |text: String, title: &str| {
+        fs::write(&input, text).unwrap();
+        run(
+            root,
+            &["new", "adr", title, "--content", input.to_str().unwrap()],
+        )
+    };
+    let text = with("0002", "related_business_rules", "\"BRR-ORD-001\"");
+    check(create(text.clone(), "driven"), 0);
+    assert_eq!(
+        fs::read_to_string(root.join(".badr/adrs/0002-driven.md")).unwrap(),
+        text
+    );
+    assert!(
+        check(run(root, &["related", "0002"]), 0)
+            .to_string()
+            .contains("BRR-ORD-001")
+    );
+    check(run(root, &["validate"]), 0);
+    let before = fs::read(root.join(".badr/evidence.jsonl")).unwrap();
+    for (field, value) in [
+        ("related_business_rules", "\"BRR-ORD-999\""),
+        ("related_business_rules", "\"BRR-ORD-002\""),
+        ("related_adrs", "\"0001\""),
+        ("supersedes", "\"0001\""),
+        ("superseded_by", "\"0001\""),
+    ] {
+        check(create(with("0003", field, value), "refused"), 2);
+        assert_eq!(fs::read(root.join(".badr/evidence.jsonl")).unwrap(), before);
+        assert!(!root.join(".badr/adrs/0003-refused.md").exists());
+    }
+}
