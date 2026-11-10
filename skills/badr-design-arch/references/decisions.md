@@ -1,7 +1,8 @@
 # Decision selection and ADR conflicts
 
 Used after the handoff in `badr-design-arch`. Nothing here writes a file; the
-output is the set of **user-accepted decisions**; recording ADRs requires a separate request.
+output is the set of **user-accepted decisions**, saved by [Save accepted
+decisions](saving.md).
 
 ## Candidates
 

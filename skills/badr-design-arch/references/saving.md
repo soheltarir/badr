@@ -1,0 +1,123 @@
+# Save accepted decisions as proposed ADRs
+
+Used after decision selection in [Decision selection and ADR
+conflicts](decisions.md). Use the confirmed absolute repository path, installed
+subcommand help, and only CLI-supported operations. Put `--content` in absolute
+temporary UTF-8 files outside managed storage. Never run target-repository
+scripts or an editor.
+
+Saving needs **Full** mode (validation exit 0, complete required coverage). In a
+blocked or limited session, write nothing; return the accepted decisions and the
+blocker instead.
+
+## Scope
+
+Each user-accepted decision becomes **exactly one** proposed ADR. Unaccepted
+alternatives and unselected candidates produce nothing. This flow never
+approves, rejects, deprecates, or supersedes an ADR, never edits an existing
+ADR, and never links ADRs. Where the user chose a successor or linked ADR over an
+approved one, record the intent in the new ADR's text only; the lifecycle
+change needs a separate request.
+
+## Prepare each record
+
+Fix **today's UTC date** once (`date -u +%Y-%m-%d`) and use it as `date`.
+
+```markdown
+---
+id: "<CLI-allocated-ID>"
+status: proposed
+date: "<YYYY-MM-DD>"
+decision-makers: [<descriptive names or roles>]
+related_business_rules: ["BRR-XXX-001"]
+---
+# <Title>
+
+## Context and Problem Statement
+## Decision Drivers
+## Considered Options
+## Decision Outcome
+### Consequences
+```
+
+- Exactly one each of **Context and Problem Statement**, **Decision Drivers**,
+  **Considered Options**, **Decision Outcome** (level two) and **Consequences**
+  (level two, or level three under Decision Outcome); every section has content.
+  Decision Outcome states the chosen option and its rationale.
+- `status` is `proposed`. `id` and `date` are quoted strings.
+- `related_business_rules` lists only **effective** driver BRRs, quoted. Free-form
+  drivers stay in the prose, labelled **not BRR-backed**.
+- Leave `supersedes`, `superseded_by`, and `related_adrs` empty or absent; creation
+  rejects them. Mention coexisting or replaced ADRs in the prose by ID.
+- Record the alternatives and trade-offs the user saw, and the option they chose,
+  even when it was not the recommendation.
+
+## Confirm exact content
+
+Show, for every ADR, its complete file with the real date, a lowercase hyphenated
+filename slug, and the operations (`new adr`, then `edit`). The ID is shown as
+`<CLI-allocated-ID>` because the CLI allocates it. Explain that interruption
+between create and edit can leave a registered scaffold. Obtain explicit
+confirmation of exact content, date, and operations.
+
+Any change afterwards (wording, date, drivers, slug, set of ADRs) invalidates
+the confirmation: show the changed content and obtain renewed confirmation
+**before any write**. If the UTC date rolls over before writing, refresh and
+reconfirm.
+
+## Save
+
+1. Register cleanup (shell `trap` or `finally`) before creating any temporary
+   file. Remove only workflow-owned files, on success, failure, cancellation, and
+   early return.
+2. Validate; require exit 0, complete coverage, and root `.badr.lock` absent:
+
+   ```sh
+   badr --repo <repo> validate --json
+   ```
+
+3. Per ADR, in order, rechecking the lock before each mutation:
+
+   ```sh
+   badr --repo <repo> new adr <slug> --json
+   ```
+
+   Read `affected_ids` for the allocated ID; never predict it. Substitute it
+   into the confirmed content without altering anything else, write the temporary
+   file, then:
+
+   ```sh
+   badr --repo <repo> edit <allocated-id> --content <absolute-temp-file> --json
+   badr --repo <repo> show <allocated-id> --json
+   ```
+
+   Compare the saved record with the confirmed content: `proposed`, same date,
+   drivers, and sections.
+4. After the last ADR, validate again:
+
+   ```sh
+   badr --repo <repo> validate --json
+   ```
+
+## Failures
+
+Inspect `partial_write.completed` on every mutation, even when `success` is
+false (creation can reserve an ID or leave a scaffold). On any failure after the
+first write:
+
+- report ADRs **completed** (created, edited, shown), the ADR **in progress**
+  (scaffold, allocated ID, path), and ADRs **pending** (not started);
+- preserve records, evidence, and any lock; delete nothing and never remove a
+  lock to release an ID;
+- do not retry blindly or continue with the remaining ADRs; stop for repair.
+
+Exit codes: 0 success, 2 invalid input/state, 3 incomplete coverage, 4
+operational failure.
+
+## Finish
+
+Report each ADR's ID, path, and status `proposed`; the final validation result
+and coverage; that nothing was approved, rejected, deprecated, or superseded;
+and `pending_commit_durability` with the changed managed paths. **Do not stage or
+commit.** Later lifecycle actions (approval, rejection, replacement, links)
+require separate requests.
