@@ -2853,6 +2853,7 @@ fn adr_creation_records_effective_driving_brrs_and_refuses_other_links() {
             .to_string()
             .contains("BRR-ORD-001")
     );
+    check(run(root, &["validate"]), 0);
     let before = fs::read(root.join(".badr/evidence.jsonl")).unwrap();
     for (field, value) in [
         ("related_business_rules", "\"BRR-ORD-999\""),
