@@ -1,7 +1,18 @@
 name: Native release candidates
 on:
   pull_request:
+    paths:
+      - "src/**"
+      - "tests/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "docs/json-schema-v1.json"
+      - "install.sh"
+      - ".github/workflows/release-candidates.yml"
   workflow_dispatch:
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 permissions:
   contents: read
 jobs:
@@ -10,7 +21,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - runner: macos-14
+          - runner: macos-15
             target: aarch64-apple-darwin
           - runner: macos-15-intel
             target: x86_64-apple-darwin
