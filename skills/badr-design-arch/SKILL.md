@@ -1,14 +1,17 @@
 ---
 name: badr-design-arch
-description: Start an architecture design session from effective BADR BRRs, user-named BRRs, or free-form requirements on a validated repository, select decisions with ADR-conflict handling, then save accepted decisions as proposed ADRs through the BADR CLI. Use when designing architecture decisions.
+description: Start an architecture design session from effective BADR BRRs, user-named BRRs, or free-form requirements on a validated repository, select decisions with ADR-conflict handling, then save accepted decisions as proposed ADRs through the BADR CLI. May also bring needed non-effective BRRs to effective, only on explicit per-step user authorization. Use when designing architecture decisions.
 ---
 
 # Start an architecture design session with BADR
 
 Establish the drivers and the validity of repository state, then hand off to the
-design interview. Nothing is written until the user accepts decisions and
-confirms exact ADR content (step 7); then the only writes are **proposed ADRs**
-through the BADR CLI. Never write BRRs, glossaries, memory, or temporary files
+design interview. Nothing is written until the user authorizes a write. The only
+permitted writes are (a) **BRR promotion steps** (propose, decide, activate),
+each separately authorized during driver selection per
+[Offer to bring a BRR to effective](references/promotion.md), and (b) **proposed
+ADRs** through the BADR CLI, only after the user accepts decisions and confirms
+exact ADR content (step 7). Never write glossaries, memory, or temporary files
 in the repository. Requires Git and a working BADR CLI; memory is optional.
 
 ## 1. Set the source boundary
@@ -40,7 +43,7 @@ Exit handling decides the **session mode**:
 
 A blocked or limited session must say so explicitly at the start of the
 handoff, with the diagnostics and the coverage that is missing. Invalid,
-incomplete, or locked state never permits saving; only Full mode may save.
+incomplete, or locked state never permits saving; only Full mode may save, whether a proposed ADR or an authorized BRR promotion step.
 
 ## 3. Choose the drivers
 
@@ -59,8 +62,12 @@ directly only if the user chose that, and mark every finding unvalidated.
 Classify every candidate by status. Only **effective** BRRs are drivers. Report
 each non-effective BRR separately with ID, status, and path: drafts, proposals,
 and approvals are *pending*; withdrawn rules are *history*; replaced rules name
-their successor when known. Never promote them to drivers; ask whether to
-continue without them. Approval is not activation.
+their successor when known. Never promote them to drivers on your own. For each *needed* draft, proposed,
+or approved BRR, offer propose, decide and activate as separate authorized
+steps per [Offer to bring a BRR to effective](references/promotion.md); each
+needs the user's explicit authorization, actor and rationale. If declined,
+continue with the dependent decisions labelled **not BRR-backed**. Approval is
+not activation.
 
 If a named ID does not exist, say so; do not guess a neighbour.
 
