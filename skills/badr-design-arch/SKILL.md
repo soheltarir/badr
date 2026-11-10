@@ -1,14 +1,15 @@
 ---
 name: badr-design-arch
-description: Start an architecture design session from effective BADR BRRs, user-named BRRs, or free-form requirements on a validated repository, then select decisions with ADR-conflict handling. Use when designing architecture decisions; writes nothing.
+description: Start an architecture design session from effective BADR BRRs, user-named BRRs, or free-form requirements on a validated repository, select decisions with ADR-conflict handling, then save accepted decisions as proposed ADRs through the BADR CLI. Use when designing architecture decisions.
 ---
 
 # Start an architecture design session with BADR
 
 Establish the drivers and the validity of repository state, then hand off to the
-design interview. **This skill writes nothing**: no BRRs, ADRs, glossaries,
-memory, or temporary files in the repository. Requires Git and a working BADR
-CLI; memory is optional.
+design interview. Nothing is written until the user accepts decisions and
+confirms exact ADR content (step 7); then the only writes are **proposed ADRs**
+through the BADR CLI. Never write BRRs, glossaries, memory, or temporary files
+in the repository. Requires Git and a working BADR CLI; memory is optional.
 
 ## 1. Set the source boundary
 
@@ -39,8 +40,7 @@ Exit handling decides the **session mode**:
 
 A blocked or limited session must say so explicitly at the start of the
 handoff, with the diagnostics and the coverage that is missing. Invalid,
-incomplete, or locked state never permits saving. This skill saves nothing in
-any mode; the label governs what later steps may do.
+incomplete, or locked state never permits saving; only Full mode may save.
 
 ## 3. Choose the drivers
 
@@ -83,7 +83,7 @@ outrank extra documents. Surface conflicts and gaps with source path and status.
 
 ## 5. Hand off to the interview
 
-End with a handoff, not a save:
+End with a handoff (no write yet):
 
 - session mode: **Full** or **limited** (with reason and missing coverage);
 - source preference and boundary in force;
@@ -93,11 +93,17 @@ End with a handoff, not a save:
 - conflicts, gaps, and related ADRs;
 - the first frontier of design questions, each with a recommendation.
 
-Then begin the design interview with decision selection (step 6). Recording
-ADRs requires a separate request. No staging, commits, or publishing.
+Then begin the design interview with decision selection (step 6). No staging, commits, or publishing.
 
 ## 6. Select and decide
 
 Follow [Decision selection and ADR conflicts](references/decisions.md). Only
 user-selected decisions proceed, and unselected ones never produce an ADR. This
 step still writes nothing.
+
+## 7. Save as proposed ADRs
+
+Follow [Save accepted decisions](references/saving.md): exact-content
+confirmation with today's UTC date, CLI creation, validation before and after,
+and failure reporting. The workflow ends at **proposed** ADRs: no approval,
+rejection, deprecation, or supersession, and nothing staged or committed.
