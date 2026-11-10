@@ -1,13 +1,15 @@
 ---
 name: badr-design-arch
-description: Start an architecture design session from effective BADR BRRs, user-named BRRs, or free-form requirements on a validated repository, then select decisions with ADR-conflict handling. Use when designing architecture decisions; writes nothing.
+description: Start an architecture design session from effective BADR BRRs, user-named BRRs, or free-form requirements on a validated repository, then select decisions with ADR-conflict handling. Use when designing architecture decisions; writes only user-authorized BRR promotion steps.
 ---
 
 # Start an architecture design session with BADR
 
 Establish the drivers and the validity of repository state, then hand off to the
-design interview. **This skill writes nothing**: no BRRs, ADRs, glossaries,
-memory, or temporary files in the repository. Requires Git and a working BADR
+design interview. **This skill writes nothing by default**: no BRRs, ADRs, glossaries,
+memory, or temporary files in the repository. The only exception is a BRR
+promotion step (propose, decide, activate) the user explicitly authorizes, per
+[Offer to bring a BRR to effective](references/promotion.md). Requires Git and a working BADR
 CLI; memory is optional.
 
 ## 1. Set the source boundary
@@ -40,7 +42,7 @@ Exit handling decides the **session mode**:
 A blocked or limited session must say so explicitly at the start of the
 handoff, with the diagnostics and the coverage that is missing. Invalid,
 incomplete, or locked state never permits saving. This skill saves nothing in
-any mode; the label governs what later steps may do.
+any mode (promotion steps need Full mode); the label governs what later steps may do.
 
 ## 3. Choose the drivers
 
@@ -59,8 +61,12 @@ directly only if the user chose that, and mark every finding unvalidated.
 Classify every candidate by status. Only **effective** BRRs are drivers. Report
 each non-effective BRR separately with ID, status, and path: drafts, proposals,
 and approvals are *pending*; withdrawn rules are *history*; replaced rules name
-their successor when known. Never promote them to drivers; ask whether to
-continue without them. Approval is not activation.
+their successor when known. Never promote them to drivers on your own. For each *needed* draft, proposed,
+or approved BRR, offer propose, decide and activate as separate authorized
+steps per [Offer to bring a BRR to effective](references/promotion.md); each
+needs the user's explicit authorization, actor and rationale. If declined,
+continue with the dependent decisions labelled **not BRR-backed**. Approval is
+not activation.
 
 If a named ID does not exist, say so; do not guess a neighbour.
 
