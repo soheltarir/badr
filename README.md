@@ -51,14 +51,15 @@ generated code or prove that the implementation conforms.
 
 ## Use BADR with an agent
 
-The repository includes two [Agent Skills](https://agentskills.io/):
+The repository includes three [Agent Skills](https://agentskills.io/):
 
 | Skill | What it helps you do | Result |
 | --- | --- | --- |
 | [`badr-init`](skills/badr-init/SKILL.md) | Choose the target Git repository and baseline, initialize BADR, and select which requirement sources the agent may consult. | Validated setup and confirmed source preferences. |
 | [`badr-refine-requirements`](skills/badr-refine-requirements/SKILL.md) | Refine new requirements, improve drafts, or work out successor rules through questions, examples, and explicit content review. | Saved, validated **draft BRRs**. |
+| [`badr-design-arch`](skills/badr-design-arch/SKILL.md) | Start an architecture design session from effective BRRs, named BRRs, or free-form requirements, behind a validation gate. | An interview handoff; writes nothing. |
 
-Both require Git and a working BADR CLI. If the CLI is missing, `badr-init` can
+All require Git and a working BADR CLI. If the CLI is missing, `badr-init` can
 install it after explaining the download and destination and obtaining your
 authorization. An existing installation is reused; upgrades require a separate
 decision. Persistent agent memory is optional: without it, source preferences
@@ -89,7 +90,8 @@ exists, review it before replacing it; these commands are for a fresh installati
 ```sh
 mkdir -p .agents/skills
 cp -R /path/to/badr-source/skills/badr-init \
-  /path/to/badr-source/skills/badr-refine-requirements .agents/skills/
+  /path/to/badr-source/skills/badr-refine-requirements \
+  /path/to/badr-source/skills/badr-design-arch .agents/skills/
 ```
 
 **Claude Code** — project skills live in `.claude/skills/`:
@@ -97,7 +99,8 @@ cp -R /path/to/badr-source/skills/badr-init \
 ```sh
 mkdir -p .claude/skills
 cp -R /path/to/badr-source/skills/badr-init \
-  /path/to/badr-source/skills/badr-refine-requirements .claude/skills/
+  /path/to/badr-source/skills/badr-refine-requirements \
+  /path/to/badr-source/skills/badr-design-arch .claude/skills/
 ```
 
 See the official [Codex skill documentation](https://developers.openai.com/codex/skills/)
