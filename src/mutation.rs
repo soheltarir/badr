@@ -225,7 +225,7 @@ pub(super) fn event(
     root: &Path,
     report: &Report,
     operation: &str,
-    authorization: Option<(&str, &str)>,
+    authorization: Option<(&Actor, &str)>,
     fields: serde_json::Value,
 ) -> Result<serde_json::Value, Failure> {
     let branch = git(root, &["symbolic-ref", "--quiet", "HEAD"])?;
@@ -241,7 +241,10 @@ pub(super) fn event(
     let at = now.to_rfc3339_opts(chrono::SecondsFormat::Nanos, true);
     let mut event = serde_json::json!({"version":1,"event_id":format!("{operation}-{at}-{}", std::process::id()),"operation":operation,"at":at,"branch":branch.trim(),"baseline_commit":report.baseline_commit,"changes":[]});
     if let Some((actor, rationale)) = authorization {
-        event["actor"] = actor.into();
+        event["actor"] = actor.name.as_str().into();
+        if actor.defaulted {
+            event["actor_defaulted"] = true.into();
+        }
         event["rationale"] = rationale.into();
         event["confirmed"] = true.into();
     }
@@ -250,6 +253,43 @@ pub(super) fn event(
         .unwrap()
         .extend(fields.as_object().unwrap().clone());
     Ok(event)
+}
+
+/// The accountable actor of a governed operation and whether it came from the git identity.
+pub(super) struct Actor {
+    pub(super) name: String,
+    pub(super) defaulted: bool,
+}
+
+impl std::fmt::Display for Actor {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.name)
+    }
+}
+
+impl Actor {
+    /// Use the explicit `--actor`, or default to the repository's configured git user name.
+    pub(super) fn resolve(root: &Path, explicit: Option<String>) -> Result<Self, String> {
+        if let Some(name) = explicit {
+            return Ok(Self {
+                name,
+                defaulted: false,
+            });
+        }
+        let name = git(root, &["config", "--get", "user.name"])
+            .ok()
+            .filter(|out| out.status.success())
+            .and_then(|out| String::from_utf8(out.stdout).ok())
+            .map(|name| name.trim().to_string())
+            .filter(|name| !name.is_empty());
+        match name {
+            Some(name) => Ok(Self {
+                name,
+                defaulted: true,
+            }),
+            None => Err("--actor was omitted and no git user.name is configured; pass --actor or configure git user.name".into()),
+        }
+    }
 }
 
 pub(super) fn run(

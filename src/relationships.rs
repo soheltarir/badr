@@ -1,4 +1,4 @@
-use super::mutation::{Plan, bytes, event};
+use super::mutation::{Actor, Plan, bytes, event};
 use super::*;
 use std::collections::BTreeSet;
 
@@ -9,7 +9,7 @@ pub(crate) struct Link {
     #[arg(long)]
     confirm: bool,
     #[arg(long)]
-    actor: String,
+    actor: Option<String>,
     #[arg(long)]
     rationale: String,
 }
@@ -33,11 +33,18 @@ pub(crate) fn targets(record: &Record) -> Vec<&str> {
 
 pub(crate) fn run(target: &Path, link: Link, remove: bool) -> Report {
     let operation = if remove { "unlink" } else { "link" };
-    if !link.confirm || link.actor.trim().is_empty() || link.rationale.trim().is_empty() {
+    let actor = match Actor::resolve(target, link.actor.clone()) {
+        Ok(actor) => actor,
+        Err(error) => {
+            return Report::invalid(operation, "invalid_relationship_arguments", error);
+        }
+    };
+    if !link.confirm || actor.name.trim().is_empty() || link.rationale.trim().is_empty() {
         return Report::invalid(
             operation,
             "invalid_relationship_arguments",
-            "Require --confirm, nonempty --actor and --rationale".into(),
+            "Require --confirm, a nonempty --rationale (--actor defaults to the git user.name)"
+                .into(),
         );
     }
     mutation::run(target, operation, |root, report, expected| {
@@ -99,7 +106,7 @@ pub(crate) fn run(target: &Path, link: Link, remove: bool) -> Report {
             root,
             report,
             operation,
-            Some((&link.actor, &link.rationale)),
+            Some((&actor, &link.rationale)),
             serde_json::json!({}),
         )?;
         let today = &event["at"].as_str().unwrap()[..10];
@@ -111,7 +118,7 @@ pub(crate) fn run(target: &Path, link: Link, remove: bool) -> Report {
             }
             body.push_str(&format!(
                 "\n### {today}\n{operation} {}.\nActor: {}\nRationale: {}\n",
-                link.target, link.actor, link.rationale
+                link.target, actor, link.rationale
             ));
         }
         let mut header = yaml_serde::to_string(&metadata).map_err(|e| e.to_string())?;
@@ -160,7 +167,7 @@ pub(crate) fn run(target: &Path, link: Link, remove: bool) -> Report {
                 "{operation} {} -> {}\n\nActor: {}\nRationale: {}\nBaseline: {}\nEvidence: {}",
                 link.id,
                 link.target,
-                link.actor,
+                actor,
                 link.rationale,
                 report.baseline_commit.as_deref().unwrap(),
                 event["event_id"].as_str().unwrap()

@@ -347,8 +347,20 @@ published; repair must preserve the reservation. Deleting an uncommitted proposa
 is an integrity error, not a way to release its ID. Restore the known record;
 BADR does not provide a delete command or bypass unrelated invalidity to allocate.
 
+### Governed actor
+
+Governed commands (`domain add`, `propose`, `decide`, `link`, `unlink`, `activate`,
+`supersede`, `deprecate`, `retire`, `reject`, and approval-resetting `edit`) record
+who is accountable for the operation. An explicit `--actor` is recorded as given.
+When `--actor` is omitted, the actor defaults to the repository's configured git
+`user.name`, and the evidence event carries `actor_defaulted: true`; explicit actors
+never carry the marker. If `--actor` is omitted and no git `user.name` is configured,
+the command is refused before anything is published. `--confirm` and a nonempty
+`--rationale` are always required, and the actor remains an unauthenticated
+declaration.
+
 `propose` accepts only a structurally valid draft BRR. It requires explicit
-`--confirm`, nonempty `--actor` and `--rationale`, records a governed event, and
+`--confirm`, a nonempty `--rationale` (and an actor, see Governed actor), records a governed event, and
 moves only to `proposed`; it grants no approval or applicability. It serializes
 frontmatter while preserving the exact Gherkin body, including line endings.
 Publication order is record then evidence. Creation and proposal report affected
@@ -423,8 +435,7 @@ badr edit 0001 --register-external \
   --confirm --actor "Human" --rationale "Register an external reasoning change"
 ```
 
-An actual approved-body change requires `--confirm`, nonempty `--actor`, and
-nonempty `--rationale`. Agents obtain human authorization outside BADR. The
+An actual approved-body change requires `--confirm`, a nonempty `--rationale` (and an actor, see Governed actor). Agents obtain human authorization outside BADR. The
 checkout must be a named branch other than the configured baseline, with valid
 existing evidence and complete required history. The ID must never have appeared
 in baseline history, including earlier drafts/proposals and subsequently deleted
@@ -463,7 +474,7 @@ badr decide 0001 --confirm --reviewed --actor "Human" --rationale "Reviewed stor
 ```
 
 `decide <id>` accepts only proposed BRRs or ADRs. It requires `--confirm`,
-nonempty `--actor` and `--rationale`, and `--reviewed`: the caller declares that
+a nonempty `--rationale` (and an actor, see Governed actor), and `--reviewed`: the caller declares that
 a human reviewed the applicable content, relationships, compatibility treatment,
 and gaps and resolved them. Agents must obtain human authorization outside BADR.
 BADR records this declaration without authenticating the actor or proving an
@@ -526,7 +537,7 @@ badr related 0001 --json
 ```
 
 `link <source-id> <target-id>` and `unlink <source-id> <target-id>` require actual
-stable IDs, `--confirm`, and nonempty `--actor` and `--rationale`. Agents obtain
+stable IDs, `--confirm`, and a nonempty `--rationale` (and an actor, see Governed actor). Agents obtain
 human authorization outside BADR; the command records the caller's declaration.
 Permitted fields are ADR `related_adrs` / `related_business_rules` and BRR
 `related_architecture_decisions`, selected from source and target types. ADR
@@ -572,7 +583,7 @@ accept only effective BRRs, preserve activation time, and set `effective_until`
 to the actual withdrawal time. Timestamps are quoted, include seconds and an
 explicit UTC timezone, and may include fractional seconds. There are no
 scheduling/backdating arguments. These commands reject ADRs and illegal or
-repeated transitions. All require `--confirm`, nonempty `--actor` and `--rationale`;
+repeated transitions. All require `--confirm`, a nonempty `--rationale` (and an actor, see Governed actor);
 agents obtain human authorization outside BADR, which records a declaration.
 
 Each event preserves the active approval reference, exact frozen body digest,
@@ -604,7 +615,7 @@ badr deprecate 0002 --confirm --actor "Human" --rationale "Direction no longer s
 `reject` accepts only proposed ADRs and returns `operation: reject`,
 `result: rejected`. For ADRs, `deprecate` accepts only approved records and returns
 `operation: deprecate`, `result: deprecated`. Both require explicit `--confirm`,
-nonempty `--actor` and `--rationale`. ADR deprecation also requires nonempty
+a nonempty `--rationale` (and an actor, see Governed actor). ADR deprecation also requires nonempty
 `--decision-gap` and `--existing-code-treatment`; explicitly state `None` when
 there is no decision gap. The record ID selects BRR or ADR behavior. BRR deprecation
 keeps its existing flags and rejects these ADR-only declarations. Agents obtain human authorization outside BADR;

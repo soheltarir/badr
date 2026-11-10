@@ -1,4 +1,4 @@
-use super::mutation::{Entry, Plan, bytes, event};
+use super::mutation::{Actor, Entry, Plan, bytes, event};
 use super::*;
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
@@ -260,7 +260,7 @@ pub(crate) struct Proposal {
     #[arg(long)]
     pub(super) confirm: bool,
     #[arg(long)]
-    pub(super) actor: String,
+    pub(super) actor: Option<String>,
     #[arg(long)]
     pub(super) rationale: String,
 }
@@ -271,11 +271,16 @@ pub(crate) fn propose(target: &Path, proposal: Proposal) -> Report {
         actor,
         rationale,
     } = proposal;
-    if !confirm || actor.trim().is_empty() || rationale.trim().is_empty() {
+    let actor = match Actor::resolve(target, actor) {
+        Ok(actor) => actor,
+        Err(error) => return Report::invalid("propose", "invalid_proposal_arguments", error),
+    };
+    if !confirm || actor.name.trim().is_empty() || rationale.trim().is_empty() {
         return Report::invalid(
             "propose",
             "invalid_proposal_arguments",
-            "Require --confirm, nonempty --actor and --rationale".into(),
+            "Require --confirm, a nonempty --rationale (--actor defaults to the git user.name)"
+                .into(),
         );
     }
     mutation::run(target, "propose", |root, report, expected| {
@@ -340,7 +345,7 @@ pub(crate) struct Approval {
     #[arg(long)]
     reviewed: bool,
     #[arg(long)]
-    actor: String,
+    actor: Option<String>,
     #[arg(long)]
     rationale: String,
 }
@@ -353,9 +358,13 @@ pub(crate) fn decide(target: &Path, approval: Approval) -> Report {
         actor,
         rationale,
     } = approval;
-    if !confirm || !reviewed || actor.trim().is_empty() || rationale.trim().is_empty() {
+    let actor = match Actor::resolve(target, actor) {
+        Ok(actor) => actor,
+        Err(error) => return Report::invalid("decide", "invalid_approval_arguments", error),
+    };
+    if !confirm || !reviewed || actor.name.trim().is_empty() || rationale.trim().is_empty() {
         return Report::invalid("decide", "invalid_approval_arguments",
-            "Require --confirm, --reviewed (applicable content/gaps reviewed and resolved), nonempty --actor and --rationale. Agents obtain human authorization outside BADR; this records a declaration without authenticating the actor or proving an interview occurred.".into());
+            "Require --confirm, --reviewed (applicable content/gaps reviewed and resolved), a nonempty --rationale (--actor defaults to the git user.name). Agents obtain human authorization outside BADR; this records a declaration without authenticating the actor or proving an interview occurred.".into());
     }
     mutation::run(target, "decide", |root, report, expected| {
         let record = report
@@ -459,7 +468,7 @@ pub(crate) struct Rejection {
     #[arg(long)]
     confirm: bool,
     #[arg(long)]
-    actor: String,
+    actor: Option<String>,
     #[arg(long)]
     rationale: String,
 }
@@ -527,15 +536,19 @@ fn withdraw_adr(target: &Path, rejection: Rejection, treatment: Option<(&str, &s
         actor,
         rationale,
     } = rejection;
+    let actor = match Actor::resolve(target, actor) {
+        Ok(actor) => actor,
+        Err(error) => return Report::invalid(operation, "invalid_withdrawal_arguments", error),
+    };
     if !confirm
-        || actor.trim().is_empty()
+        || actor.name.trim().is_empty()
         || rationale.trim().is_empty()
         || treatment.is_some_and(|(gap, code)| gap.trim().is_empty() || code.trim().is_empty())
     {
         return Report::invalid(
             operation,
             "invalid_withdrawal_arguments",
-            "Require --confirm, nonempty --actor and --rationale; deprecation also requires nonempty --decision-gap and --existing-code-treatment".into(),
+            "Require --confirm, a nonempty --rationale (--actor defaults to the git user.name); deprecation also requires nonempty --decision-gap and --existing-code-treatment".into(),
         );
     }
     mutation::run(target, operation, |root, report, expected| {
@@ -624,9 +637,13 @@ pub(crate) fn lifecycle(target: &Path, operation: &str, choice: Proposal) -> Rep
         actor,
         rationale,
     } = choice;
-    if !confirm || actor.trim().is_empty() || rationale.trim().is_empty() {
+    let actor = match Actor::resolve(target, actor) {
+        Ok(actor) => actor,
+        Err(error) => return Report::invalid(operation, "invalid_lifecycle_arguments", error),
+    };
+    if !confirm || actor.name.trim().is_empty() || rationale.trim().is_empty() {
         return Report::invalid(operation, "invalid_lifecycle_arguments",
-            "Require --confirm, nonempty --actor and --rationale. Agents obtain human authorization outside BADR; this records the caller's declaration.".into());
+            "Require --confirm, a nonempty --rationale (--actor defaults to the git user.name). Agents obtain human authorization outside BADR; this records the caller's declaration.".into());
     }
     mutation::run(target, operation, |root, report, expected| {
         let record = report

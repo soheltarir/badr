@@ -153,11 +153,12 @@ pub(crate) fn run(target: &Path, edit: Edit) -> Report {
                             .into(),
                     );
                 }
-                let actor = edit.actor.as_deref().filter(|s| !s.trim().is_empty());
+                let actor = mutation::Actor::resolve(root, edit.actor.clone())?;
+                let actor = Some(actor).filter(|a| !a.name.trim().is_empty());
                 let rationale = edit.rationale.as_deref().filter(|s| !s.trim().is_empty());
                 if !edit.confirm || actor.is_none() || rationale.is_none() {
                     return Err(
-                        "Approval reset requires --confirm, nonempty --actor and --rationale"
+                        "Approval reset requires --confirm, a nonempty --rationale (--actor defaults to the git user.name)"
                             .into(),
                     );
                 }
@@ -166,7 +167,7 @@ pub(crate) fn run(target: &Path, edit: Edit) -> Report {
                     root,
                     report,
                     "edit",
-                    Some((actor.unwrap(), rationale.unwrap())),
+                    Some((actor.as_ref().unwrap(), rationale.unwrap())),
                     serde_json::json!({}),
                 )?;
                 let mut header = metadata(&changed)?;
