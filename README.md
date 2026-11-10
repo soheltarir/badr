@@ -57,7 +57,7 @@ The repository includes three [Agent Skills](https://agentskills.io/):
 | --- | --- | --- |
 | [`badr-init`](skills/badr-init/SKILL.md) | Choose the target Git repository and baseline, initialize BADR, and select which requirement sources the agent may consult. | Validated setup and confirmed source preferences. |
 | [`badr-refine-requirements`](skills/badr-refine-requirements/SKILL.md) | Refine new requirements, improve drafts, or work out successor rules through questions, examples, and explicit content review. | Saved, validated **draft BRRs**. |
-| [`badr-design-arch`](skills/badr-design-arch/SKILL.md) | Start an architecture design session from effective BRRs, named BRRs, or free-form requirements, behind a validation gate. | An interview handoff; writes nothing. |
+| [`badr-design-arch`](skills/badr-design-arch/SKILL.md) | Start an architecture design session from effective BRRs, named BRRs, or free-form requirements, behind a validation gate. | An interview handoff and user-selected decisions with approved-ADR conflict handling; writes nothing. |
 
 All require Git and a working BADR CLI. If the CLI is missing, `badr-init` can
 install it after explaining the download and destination and obtaining your

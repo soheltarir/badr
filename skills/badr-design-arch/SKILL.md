@@ -93,5 +93,14 @@ End with a handoff, not a save:
 - conflicts, gaps, and related ADRs;
 - the first frontier of design questions, each with a recommendation.
 
-Then begin the design interview. Implementation choices are decided there;
-recording ADRs requires a separate request. No staging, commits, or publishing.
+Then begin the design interview with decision selection (step 6). Recording
+ADRs requires a separate request. No staging, commits, or publishing.
+
+## 6. Select and decide
+
+Follow [Decision selection and ADR conflicts](references/decisions.md): list
+candidate decisions and proceed only with those the user selects; show each with
+at least two real alternatives and a recommendation before the user chooses;
+read related ADRs in full before judging overlap; stop for a keep / successor /
+linked-ADR choice on approved-ADR overlap, and only report proposed-ADR overlap.
+Unselected decisions never produce an ADR. This step still writes nothing.
