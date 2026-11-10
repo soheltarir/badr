@@ -83,7 +83,7 @@ outrank extra documents. Surface conflicts and gaps with source path and status.
 
 ## 5. Hand off to the interview
 
-End with a handoff, not a save:
+End with a handoff (no write yet):
 
 - session mode: **Full** or **limited** (with reason and missing coverage);
 - source preference and boundary in force;
