@@ -59,14 +59,24 @@ The repository includes three [Agent Skills](https://agentskills.io/):
 | [`badr-refine-requirements`](skills/badr-refine-requirements/SKILL.md) | Refine new requirements, improve drafts, or work out successor rules through questions, examples, and explicit content review. | Saved, validated **draft BRRs**. |
 | [`badr-design-arch`](skills/badr-design-arch/SKILL.md) | Start an architecture design session from effective BRRs, named BRRs, or free-form requirements, behind a validation gate. | Saved, validated **proposed ADRs** for user-accepted decisions. |
 
+`badr-design-arch` is the design counterpart to `badr-refine-requirements`: the
+requirements skill decides *what* the business needs and saves draft BRRs; the
+design skill takes the **effective** BRRs (or named BRRs, or free-form
+requirements labelled *not BRR-backed*) and works out *how* to build it. Use it
+once rules are effective and you are ready to choose technical approaches. It
+checks `badr validate` first and saves only after you confirm exact content. It
+can also bring a needed non-effective BRR to effective, one explicitly
+authorized step at a time.
+
 All require Git and a working BADR CLI. If the CLI is missing, `badr-init` can
 install it after explaining the download and destination and obtaining your
 authorization. An existing installation is reused; upgrades require a separate
 decision. Persistent agent memory is optional: without it, source preferences
 last only for the conversation and must be confirmed in a later session.
 
-These skills currently cover setup and business requirements. They do not provide
-an ADR authoring workflow or automatically propose, approve, or activate rules.
+The skills never approve or activate anything on their own. The design skill ends
+at **proposed** ADRs; approving, rejecting, or superseding them is a separate
+request. It changes a BRR's lifecycle only when you authorize each step.
 
 ### Install the skills
 
@@ -82,7 +92,7 @@ cd /path/to/your-project
 ```
 
 Copy the **complete skill folders**, including their `references/` directories,
-into your target project's skill directory. If either destination skill already
+into your target project's skill directory. If any destination skill already
 exists, review it before replacing it; these commands are for a fresh installation.
 
 **Codex** — project skills live in `.agents/skills/`:
@@ -127,6 +137,13 @@ $badr-refine-requirements Help me define when customers may cancel an order. Int
 In **Claude Code**, use `/badr-init` and `/badr-refine-requirements` with the same
 requests instead of the `$` mentions above.
 
+Once rules are effective, start the design session the same way (`$badr-design-arch`
+in Codex, `/badr-design-arch` in Claude Code):
+
+```text
+$badr-design-arch Design the architecture for the ordering domain's effective BRRs.
+```
+
 During setup, choose either BADR artefacts only or BADR artefacts plus individually
 confirmed specs/docs. During refinement, the agent asks related questions in
 rounds, works through scenarios and exceptions, and confirms shared understanding.
@@ -134,7 +151,8 @@ It then shows the complete draft content and save operations for your approval.
 If a new business domain is needed, it asks separately before registering it.
 
 The result is one or more draft BRRs with IDs, paths, and validation results.
-They are not yet approved or effective, and changes remain uncommitted.
+They are not yet approved or effective, and changes remain uncommitted. The design
+skill likewise saves **proposed ADRs** with IDs, paths, and validation results.
 
 ## Use the CLI directly
 
