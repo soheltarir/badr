@@ -58,6 +58,10 @@ related_business_rules: ["BRR-XXX-001"]
 
 ## Confirm exact content
 
+First apply the driverless-decision warning in [Trace decisions to
+BRRs](coverage.md): a decision with no effective driver needs explicit
+confirmation but is never blocked.
+
 Show, for every ADR, its complete file with the real date, a lowercase hyphenated
 filename slug, and the operation (`new adr --content`). Obtain explicit
 confirmation of exact content, date, and operation. The ID is part of the
@@ -120,3 +124,6 @@ and coverage; that nothing was approved, rejected, deprecated, or superseded;
 `pending_commit_durability`, and the changed managed paths from `partial_write.completed`. **Do not stage or
 commit.** Later lifecycle actions (approval, rejection, replacement, links)
 require separate requests.
+
+Re-run the coverage review from [Trace decisions to BRRs](coverage.md) against the
+now-current records and report remaining gaps with ADR statuses.

@@ -100,13 +100,18 @@ End with a handoff (no write yet):
 - conflicts, gaps, and related ADRs;
 - the first frontier of design questions, each with a recommendation.
 
-Then begin the design interview with decision selection (step 6). No staging, commits, or publishing.
+In Full mode, include the coverage review from [Trace decisions to
+BRRs](references/coverage.md): effective BRRs with no ADR, with the ADR
+statuses that do cover them. Then begin the design interview with decision
+selection (step 6). No staging, commits, or publishing.
 
 ## 6. Select and decide
 
 Follow [Decision selection and ADR conflicts](references/decisions.md). Only
-user-selected decisions proceed, and unselected ones never produce an ADR. This
-step still writes nothing.
+user-selected decisions proceed, and unselected ones never produce an ADR. Offer an
+ADR for each coverage gap and warn on any decision without a driving BRR, per
+[Trace decisions to BRRs](references/coverage.md). This step still writes
+nothing.
 
 ## 7. Save as proposed ADRs
 
