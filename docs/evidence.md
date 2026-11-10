@@ -29,7 +29,8 @@ in the configured baseline's history. Missing supporting history returns
 incomplete coverage, never an invented historical result.
 
 Governed events require nonempty `actor`, nonempty `rationale`, and
-`confirmed: true`. Confirmation records the caller's declaration of human
+`confirmed: true`. `actor_defaulted: true` is present only when the actor was defaulted from the git
+`user.name` because `--actor` was omitted; it is otherwise absent. Confirmation records the caller's declaration of human
 review/authorization; it does not authenticate an approver or prove semantic
 adequacy. Recorded times and branch names are declarations, not independently
 authenticated observations. Allocation is not an approval. `decide` additionally requires `reviewed: true`,

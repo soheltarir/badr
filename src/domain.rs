@@ -1,4 +1,4 @@
-use super::mutation::{Plan, bytes, event};
+use super::mutation::{Actor, Plan, bytes, event};
 use super::*;
 use std::collections::BTreeMap;
 const REGISTRY: &str = ".badr/brrs/registry.yaml";
@@ -14,7 +14,7 @@ pub(crate) enum Command {
         #[arg(long)]
         confirm: bool,
         #[arg(long)]
-        actor: String,
+        actor: Option<String>,
         #[arg(long)]
         rationale: String,
     },
@@ -28,10 +28,14 @@ pub(crate) fn run(target: &Path, command: Command) -> Report {
         actor,
         rationale,
     } = command;
+    let actor = match Actor::resolve(target, actor) {
+        Ok(actor) => actor,
+        Err(error) => return Report::invalid("domain_add", "invalid_domain_arguments", error),
+    };
     if !brr::slug(&slug)
         || !brr::prefix(&prefix)
         || !confirm
-        || actor.trim().is_empty()
+        || actor.name.trim().is_empty()
         || rationale.trim().is_empty()
     {
         return Report::invalid("domain_add", "invalid_domain_arguments", "Require a lowercase domain slug, uppercase prefix, --confirm, nonempty --actor and --rationale".into());

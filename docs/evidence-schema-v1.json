@@ -54,6 +54,10 @@
         "null"
       ]
     },
+    "actor_defaulted": {
+      "description": "Present and true only when the actor was defaulted from the git user name because --actor was omitted.",
+      "const": true
+    },
     "rationale": {
       "type": [
         "string",

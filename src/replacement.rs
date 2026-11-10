@@ -1,5 +1,5 @@
 use super::authoring::{Proposal, append, change, parse};
-use super::mutation::{Plan, bytes, event};
+use super::mutation::{Actor, Plan, bytes, event};
 use super::*;
 use std::collections::BTreeSet;
 
@@ -30,7 +30,7 @@ pub(crate) struct Replacement {
     #[arg(long)]
     confirm: bool,
     #[arg(long)]
-    actor: String,
+    actor: Option<String>,
     #[arg(long)]
     rationale: String,
 }
@@ -65,13 +65,17 @@ pub(crate) fn activate(target: &Path, activation: Activation) -> Report {
 }
 
 fn run_brr(target: &Path, operation: &str, group: Replacement) -> Report {
+    let actor = match Actor::resolve(target, group.actor.clone()) {
+        Ok(actor) => actor,
+        Err(error) => return Report::invalid(operation, "invalid_replacement_arguments", error),
+    };
     let predecessors: BTreeSet<_> = group.predecessor.iter().collect();
     let successors: BTreeSet<_> = group.successor.iter().collect();
     if group.approve_successors
         || !group.complete
         || !group.reviewed
         || !group.confirm
-        || group.actor.trim().is_empty()
+        || actor.name.trim().is_empty()
         || group.rationale.trim().is_empty()
         || predecessors.is_empty()
         || successors.is_empty()
@@ -86,7 +90,7 @@ fn run_brr(target: &Path, operation: &str, group: Replacement) -> Report {
             root,
             report,
             operation,
-            Some((&group.actor, &group.rationale)),
+            Some((&actor, &group.rationale)),
             serde_json::json!({}),
         )?;
         event["replacement"] = serde_json::json!({"predecessors": predecessors, "successors": successors, "complete": true, "compatibility_confirmed": true});
@@ -167,7 +171,7 @@ fn run_brr(target: &Path, operation: &str, group: Replacement) -> Report {
                 "{operation} complete BRR replacement\n\nPredecessors: {:?}\nSuccessors: {:?}\nActor: {}\nRationale: {}\nCompatibility: reviewed\nBaseline: {}\nEvidence: {}",
                 predecessors,
                 successors,
-                group.actor,
+                actor,
                 group.rationale,
                 report.baseline_commit.as_deref().unwrap(),
                 event["event_id"].as_str().unwrap()
@@ -190,9 +194,13 @@ pub(crate) fn run(target: &Path, choice: Replacement) -> Report {
 }
 
 fn run_adr(target: &Path, choice: Replacement) -> Report {
+    let actor = match Actor::resolve(target, choice.actor.clone()) {
+        Ok(actor) => actor,
+        Err(error) => return Report::invalid("supersede", "invalid_replacement_arguments", error),
+    };
     if !choice.complete
         || !choice.confirm
-        || choice.actor.trim().is_empty()
+        || actor.name.trim().is_empty()
         || choice.rationale.trim().is_empty()
         || choice.approve_successors && !choice.reviewed
         || choice.reviewed && !choice.approve_successors
@@ -222,7 +230,7 @@ fn run_adr(target: &Path, choice: Replacement) -> Report {
             root,
             report,
             operation,
-            Some((&choice.actor, &choice.rationale)),
+            Some((&actor, &choice.rationale)),
             serde_json::json!({"replacement": {"predecessors": choice.predecessor, "successors": choice.successor, "complete": true}}),
         )?;
         if choice.approve_successors {
@@ -294,7 +302,7 @@ fn run_adr(target: &Path, choice: Replacement) -> Report {
             notes.push_str(&format!("\n### {today} complete replacement\n\n"));
             let declaration = format!(
                 "Actor: {}\nRationale: {}\nComplete predecessors: {:?}\nComplete successors: {:?}\nApproved in group: {approving}",
-                choice.actor, choice.rationale, choice.predecessor, choice.successor
+                actor, choice.rationale, choice.predecessor, choice.successor
             );
             for line in declaration.lines() {
                 notes.push_str(&format!("> {line}\n"));
@@ -330,7 +338,7 @@ fn run_adr(target: &Path, choice: Replacement) -> Report {
                 "Replace ADRs {:?} with {:?}\n\nActor: {}\nRationale: {}\nBaseline: {}\nEvidence: {}",
                 choice.predecessor,
                 choice.successor,
-                choice.actor,
+                actor,
                 choice.rationale,
                 report.baseline_commit.as_deref().unwrap(),
                 receipt["event_id"].as_str().unwrap()

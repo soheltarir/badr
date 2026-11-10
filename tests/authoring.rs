@@ -25,6 +25,9 @@ fn run(root: &Path, args: &[&str]) -> Output {
         .arg(root)
         .arg("--json")
         .args(args)
+        // No ambient git identity, so an omitted --actor cannot be defaulted.
+        .env("GIT_CONFIG_GLOBAL", "/dev/null")
+        .env("GIT_CONFIG_NOSYSTEM", "1")
         .output()
         .unwrap()
 }

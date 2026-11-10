@@ -20,6 +20,7 @@ struct Event {
     branch: String,
     baseline_commit: String,
     actor: Option<String>,
+    actor_defaulted: Option<bool>,
     rationale: Option<String>,
     confirmed: Option<bool>,
     reviewed: Option<bool>,
@@ -270,6 +271,9 @@ fn replay(events: &[Event], available: [bool; 2], report: &mut Report) -> BTreeM
                 return Err(
                     "Governed changes require actor, rationale, and explicit confirmation".into(),
                 );
+            }
+            if event.actor_defaulted.is_some_and(|defaulted| !defaulted) {
+                return Err("actor_defaulted is only recorded as true when the actor came from the git identity".into());
             }
             if event.operation == "decide" && event.reviewed != Some(true) {
                 return Err("Approval requires a declaration that applicable content and gaps were reviewed and resolved".into());
