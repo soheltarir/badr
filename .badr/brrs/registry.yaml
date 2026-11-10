@@ -1,7 +1,17 @@
 version: 1
 domains:
+  architecture: ARC
   governance: GOV
 rules:
+  BRR-ARC-001: domains/architecture/rules/BRR-ARC-001-design-input-sources.feature
+  BRR-ARC-002: domains/architecture/rules/BRR-ARC-002-design-preflight-gate.feature
+  BRR-ARC-003: domains/architecture/rules/BRR-ARC-003-approved-adr-conflicts.feature
+  BRR-ARC-004: domains/architecture/rules/BRR-ARC-004-user-selected-decisions.feature
+  BRR-ARC-005: domains/architecture/rules/BRR-ARC-005-adr-via-cli.feature
+  BRR-ARC-006: domains/architecture/rules/BRR-ARC-006-decision-traceability.feature
+  BRR-ARC-007: domains/architecture/rules/BRR-ARC-007-bring-brr-to-effective.feature
+  BRR-ARC-008: domains/architecture/rules/BRR-ARC-008-proposed-adrs-only.feature
+  BRR-ARC-009: domains/architecture/rules/BRR-ARC-009-creation-time-drivers.feature
   BRR-GOV-001: domains/governance/rules/BRR-GOV-001-safe-initialization.feature
   BRR-GOV-002: domains/governance/rules/BRR-GOV-002-permanent-identities.feature
   BRR-GOV-003: domains/governance/rules/BRR-GOV-003-approval-and-applicability.feature
@@ -12,3 +22,4 @@ rules:
   BRR-GOV-008: domains/governance/rules/BRR-GOV-008-honest-validation.feature
   BRR-GOV-009: domains/governance/rules/BRR-GOV-009-safe-governed-writes.feature
   BRR-GOV-010: domains/governance/rules/BRR-GOV-010-explicit-authoring.feature
+  BRR-GOV-011: domains/governance/rules/BRR-GOV-011-git-identity-actor-default.feature

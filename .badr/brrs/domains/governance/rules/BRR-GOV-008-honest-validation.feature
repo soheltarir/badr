@@ -1,9 +1,13 @@
 ---
 domain: governance
+effective_from: "2026-11-10T12:46:10.705048000Z"
 id: BRR-GOV-008
 owners:
 - BADR maintainers
-status: draft
+related_architecture_decisions: []
+status: effective
+superseded_by: []
+supersedes: []
 ---
 @brr:BRR-GOV-008
 @domain:governance
