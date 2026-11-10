@@ -1,6 +1,6 @@
 ---
 name: badr-design-arch
-description: Start an architecture design session from effective BADR BRRs, user-named BRRs, or free-form requirements on a validated repository. Use when designing architecture decisions; writes nothing and ends with an interview handoff.
+description: Start an architecture design session from effective BADR BRRs, user-named BRRs, or free-form requirements on a validated repository, then select decisions with ADR-conflict handling. Use when designing architecture decisions; writes nothing.
 ---
 
 # Start an architecture design session with BADR
@@ -93,5 +93,11 @@ End with a handoff, not a save:
 - conflicts, gaps, and related ADRs;
 - the first frontier of design questions, each with a recommendation.
 
-Then begin the design interview. Implementation choices are decided there;
-recording ADRs requires a separate request. No staging, commits, or publishing.
+Then begin the design interview with decision selection (step 6). Recording
+ADRs requires a separate request. No staging, commits, or publishing.
+
+## 6. Select and decide
+
+Follow [Decision selection and ADR conflicts](references/decisions.md). Only
+user-selected decisions proceed, and unselected ones never produce an ADR. This
+step still writes nothing.
