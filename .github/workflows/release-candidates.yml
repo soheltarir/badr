@@ -1,7 +1,18 @@
 name: Native release candidates
 on:
   pull_request:
+    paths:
+      - "src/**"
+      - "tests/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "docs/json-schema-v1.json"
+      - "install.sh"
+      - ".github/workflows/release-candidates.yml"
   workflow_dispatch:
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 permissions:
   contents: read
 jobs:
