@@ -8,6 +8,9 @@ description: Refine new, draft, or successor business requirements through depen
 Interview first. Save only exact, reviewed drafts. Requires Git, a working BADR
 CLI, initialized configuration, and a usable local baseline; memory is optional.
 
+Before asking any question or requesting confirmation, read and follow
+[Structured user input](../shared/user-input.md). Apply it throughout this workflow.
+
 ## 1. Set the source boundary
 
 Resolve the checkout's canonical absolute Git root. From the host's structured
@@ -84,8 +87,8 @@ wins. Incomplete integrity/history blocks saving, not a clearly labeled intervie
 ## 3. Interview the frontier
 
 Track settled, open, deferred, and dependent choices. Ask independent **frontier**
-questions together, numbered, each with a recommendation and reason; use question
-controls when available. Discover allowed-source facts yourself and ask the user
+questions together, each with a recommendation and reason, through the shared
+structured-input policy. Discover allowed-source facts yourself and ask the user
 for decisions. Unknown facts stay explicit. Recompute the frontier after each
 round; ask before broadening sources.
 

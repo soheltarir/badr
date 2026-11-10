@@ -92,7 +92,10 @@ cd /path/to/your-project
 ```
 
 Copy the **complete skill folders**, including their `references/` directories,
-into your target project's skill directory. If any destination skill already
+and the **`shared/` folder** into your target project's skill directory. Keep
+`shared/` beside the skill folders, even when installing only one BADR skill.
+It contains the common [structured user-input policy](skills/shared/user-input.md):
+questions and interviews use the host's rendered input tools. If any destination folder already
 exists, review it before replacing it; these commands are for a fresh installation.
 
 **Codex** — project skills live in `.agents/skills/`:
@@ -101,7 +104,8 @@ exists, review it before replacing it; these commands are for a fresh installati
 mkdir -p .agents/skills
 cp -R /path/to/badr-source/skills/badr-init \
   /path/to/badr-source/skills/badr-refine-requirements \
-  /path/to/badr-source/skills/badr-design-arch .agents/skills/
+  /path/to/badr-source/skills/badr-design-arch \
+  /path/to/badr-source/skills/shared .agents/skills/
 ```
 
 **Claude Code** — project skills live in `.claude/skills/`:
@@ -110,7 +114,8 @@ cp -R /path/to/badr-source/skills/badr-init \
 mkdir -p .claude/skills
 cp -R /path/to/badr-source/skills/badr-init \
   /path/to/badr-source/skills/badr-refine-requirements \
-  /path/to/badr-source/skills/badr-design-arch .claude/skills/
+  /path/to/badr-source/skills/badr-design-arch \
+  /path/to/badr-source/skills/shared .claude/skills/
 ```
 
 See the official [Codex skill documentation](https://developers.openai.com/codex/skills/)

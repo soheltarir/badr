@@ -6,8 +6,11 @@ description: Initialize BADR in an existing Git repository and select repository
 # Initialize BADR
 
 Set up the selected repository without replacing configuration or creating rules.
-This skill is self-contained; another installed skill is not required.
+Another installed skill is not required; install the shared reference alongside it.
 Requires Git and a working BADR CLI; persistent memory is optional.
+
+Before asking any question or requesting confirmation, read and follow
+[Structured user input](../shared/user-input.md). Apply it throughout this workflow.
 
 ## 1. Locate the repository and CLI
 

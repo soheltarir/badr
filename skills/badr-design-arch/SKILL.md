@@ -5,6 +5,9 @@ description: Start an architecture design session from effective BADR BRRs, user
 
 # Start an architecture design session with BADR
 
+Before asking any question or requesting confirmation, read and follow
+[Structured user input](../shared/user-input.md). Apply it throughout this workflow.
+
 Establish the drivers and the validity of repository state, then hand off to the
 design interview. Nothing is written until the user authorizes a write. The only
 permitted writes are (a) **BRR promotion steps** (propose, decide, activate),
