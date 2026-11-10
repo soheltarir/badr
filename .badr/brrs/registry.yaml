@@ -1,0 +1,14 @@
+version: 1
+domains:
+  governance: GOV
+rules:
+  BRR-GOV-001: domains/governance/rules/BRR-GOV-001-safe-initialization.feature
+  BRR-GOV-002: domains/governance/rules/BRR-GOV-002-permanent-identities.feature
+  BRR-GOV-003: domains/governance/rules/BRR-GOV-003-approval-and-applicability.feature
+  BRR-GOV-004: domains/governance/rules/BRR-GOV-004-frozen-content.feature
+  BRR-GOV-005: domains/governance/rules/BRR-GOV-005-explicit-withdrawal.feature
+  BRR-GOV-006: domains/governance/rules/BRR-GOV-006-complete-replacement.feature
+  BRR-GOV-007: domains/governance/rules/BRR-GOV-007-directed-relationships.feature
+  BRR-GOV-008: domains/governance/rules/BRR-GOV-008-honest-validation.feature
+  BRR-GOV-009: domains/governance/rules/BRR-GOV-009-safe-governed-writes.feature
+  BRR-GOV-010: domains/governance/rules/BRR-GOV-010-explicit-authoring.feature
